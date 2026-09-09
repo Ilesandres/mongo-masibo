@@ -6,8 +6,9 @@ from dotenv import load_dotenv
 load_dotenv(Path(__file__).parent / "taller-conexion-mongo" / ".env")
 
 MONGO_URI = os.getenv("MONGO_URI") or os.getenv("mongo_uri")
+DB_NAME_ENV = os.getenv("DB_NAME") or os.getenv("db_name") or "ventas_db"
 
-DB_NAME = "ventas_db"
+DB_NAME = DB_NAME_ENV or "ventas_db"
 
 COLECCIONES_OLTP = ["clientes", "productos", "ventas"]
 COLECCION_OLAP = "ventas_analiticas"
