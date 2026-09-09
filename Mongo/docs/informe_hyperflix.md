@@ -791,7 +791,312 @@ usan `upsert` y el ETL reemplaza hechos por `_id`.
 - Añadir pruebas automatizadas para conteos, unicidad e idempotencia.
 - Configurar timeouts y opciones TLS explícitas para producción.
 
-## 22. Conclusión
+## 22. Lenguaje de programación y versión
+
+### 22.1 Lenguaje utilizado: Python
+
+Hyperflix está implementado en **Python 3**. Python se eligió como lenguaje principal
+por las siguientes razones:
+
+- Tiene un cliente oficial y maduro para MongoDB mediante PyMongo.
+- Permite crear scripts ejecutables de forma independiente para cada fase.
+- Facilita la generación de datos sintéticos con Faker.
+- Cuenta con tipos de datos adecuados para fechas, listas, diccionarios y procesamiento
+	de documentos BSON/JSON.
+- Tiene una sintaxis breve y apropiada para un proyecto académico de ETL y benchmarking.
+- Permite separar configuración, conexión, generación, transformación y medición en
+	módulos pequeños.
+
+El código usa características compatibles con Python 3.8 o superior: funciones, f-strings,
+diccionarios, listas por comprensión, excepciones y `pathlib`. La ejecución concreta del
+proyecto se realizó con:
+
+```text
+Python 3.12.10
+Windows
+Entorno virtual: .venv
+```
+
+Python no se utiliza para procesar el video binario. En esta entrega modela el catálogo,
+los perfiles y los eventos de reproducción; el almacenamiento y la consulta de dichos
+documentos se delegan a MongoDB Atlas.
+
+### 22.2 Librería estándar utilizada
+
+El proyecto también utiliza módulos incluidos en Python, por lo que no necesitan aparecer
+en `requirements.txt`:
+
+| Módulo | Uso dentro del sistema |
+| --- | --- |
+| `os` | Leer `MONGO_URI` y `DB_NAME` desde variables de entorno |
+| `sys` | Ajustar la salida de consola y la ruta de imports |
+| `pathlib.Path` | Construir rutas portables al `.env` y a la raíz |
+| `datetime` | Crear fechas de ejemplo para usuarios y películas |
+| `random` | Elegir valores sintéticos de planes, estados y referencias |
+| `time` | Medir el tiempo de generación y ETL |
+| `time.perf_counter` | Medir latencias con mayor resolución |
+| `json` | Convertir muestras BSON a una representación imprimible |
+
+La separación entre librería estándar y dependencias externas es importante: solo se
+instalan paquetes que Python no incluye por defecto.
+
+## 23. Dependencias, versiones y justificación
+
+### 23.1 Archivo de requisitos
+
+El archivo `requirements.txt` actual contiene:
+
+```text
+pymongo==4.17.0
+python-dotenv>=1.0
+faker>=18.0
+```
+
+La versión de PyMongo está fijada exactamente para que cualquier instalación utilice el
+mismo driver. `python-dotenv` y `faker` tienen un mínimo, no un máximo; por eso la versión
+real instalada debe registrarse aparte cuando se necesite reproducibilidad exacta.
+
+### 23.2 Versiones verificadas en el entorno ejecutado
+
+Estas son las versiones obtenidas directamente desde el entorno virtual utilizado para
+ejecutar Hyperflix:
+
+| Paquete | Versión instalada | Restricción declarada | Motivo de uso |
+| --- | --- | --- | --- |
+| `pymongo` | `4.17.0` | `==4.17.0` | Conectar, insertar, consultar, agregar, indexar y administrar MongoDB |
+| `python-dotenv` | `1.2.3` | `>=1.0` | Cargar secretos y configuración desde `.env` |
+| `Faker` | `40.38.0` | `>=18.0` | Crear nombres, direcciones, fechas y datos sintéticos localizados |
+
+La versión de Python verificada fue `3.12.10`. La versión exacta del servidor o cluster de
+MongoDB Atlas no se fija en este repositorio porque es administrada por Atlas; el cliente
+PyMongo negocia la comunicación con el servidor compatible.
+
+### 23.3 `pymongo==4.17.0`
+
+PyMongo es el driver oficial de Python para MongoDB. Es indispensable porque todos los
+scripts se comunican con Atlas mediante sus clases y métodos:
+
+- `pymongo.MongoClient(...)`: crea el cliente.
+- `client.admin.command("ping")`: prueba conectividad.
+- `client[config.DB_NAME]`: selecciona la base.
+- `db.create_collection(...)`: crea colecciones.
+- `collection.create_index(...)`: crea índices.
+- `collection.insert_many(...)`: inserta lotes.
+- `collection.find(...)` y `find_one(...)`: lee documentos y referencias.
+- `collection.update_one(..., upsert=True)`: inserta datos de ejemplo sin duplicarlos.
+- `collection.aggregate(...)`: ejecuta el ETL y los reportes.
+- `client.drop_database(...)`: limpia la base cuando el usuario lo confirma.
+
+Se utilizó la versión `4.17.0` porque es la versión declarada por el proyecto y ofrece la
+API moderna de PyMongo 4.x. Fijar `==4.17.0` evita que una actualización automática cambie
+la API, el comportamiento de errores o las opciones de conexión durante una evaluación.
+
+Además, el paquete expone excepciones específicas utilizadas en `conexion.py`:
+
+```python
+from pymongo.errors import ConfigurationError
+from pymongo.errors import ConnectionFailure
+from pymongo.errors import OperationFailure
+```
+
+- `ConnectionFailure`: problemas al contactar el cluster.
+- `ConfigurationError`: URI ausente o configuración inválida.
+- `OperationFailure`: error reportado por MongoDB, por ejemplo autenticación.
+
+### 23.4 `python-dotenv==1.2.3` en el entorno
+
+`python-dotenv` permite mantener credenciales fuera del código. El sistema lo usa una vez
+en `config.py`:
+
+```python
+from dotenv import load_dotenv
+
+load_dotenv(
+		Path(__file__).parent / "taller-conexion-mongo" / ".env"
+)
+```
+
+Después, `os.getenv` obtiene `MONGO_URI` y `DB_NAME`. Esta librería fue seleccionada
+porque:
+
+- utiliza el formato estándar de archivos `.env`;
+- funciona en Windows, Linux y macOS;
+- no obliga a escribir secretos en los scripts;
+- permite usar el mismo código en desarrollo y en diferentes equipos;
+- se integra directamente con `os.environ`.
+
+La versión instalada fue `1.2.3`. El requisito `>=1.0` permite versiones compatibles
+posteriores, aunque para una reproducción exacta de esta ejecución conviene generar un
+archivo de bloqueo con `pip freeze`.
+
+### 23.5 `Faker==40.38.0` en el entorno
+
+Faker se usa exclusivamente para poblar datos sintéticos. El locale `es_CO` genera
+información con apariencia colombiana:
+
+```python
+from faker import Faker
+
+fake = Faker("es_CO")
+nombre = fake.name()
+telefono = fake.phone_number()
+ciudad = fake.city()
+fecha = fake.date_time_between(start_date="-2y", end_date="now")
+```
+
+Se eligió porque:
+
+- evita introducir manualmente miles de documentos;
+- produce variedad en nombres, teléfonos, ciudades y fechas;
+- permite probar agrupaciones y filtros con datos más realistas;
+- ofrece localización `es_CO`, coherente con el contexto colombiano del proyecto;
+- simplifica repetir la generación a gran escala.
+
+La versión instalada fue `40.38.0`. El código utiliza APIs estables de Faker: constructor
+con locale, `name`, `phone_number`, `city`, `street_address`, `word`, `date_time_between`
+y `free_email_domain` disponible en la versión utilizada. El requisito `>=18.0` mantiene
+compatibilidad con una versión ampliamente disponible, aunque conviene fijar la versión
+exacta para reproducir exactamente los valores sintéticos.
+
+## 24. Instalación y compatibilidad del entorno
+
+### 24.1 Requisitos previos
+
+Antes de instalar el proyecto se necesita:
+
+1. Python 3.8 o superior; se recomienda Python 3.12.
+2. Acceso a internet para instalar dependencias.
+3. Una cuenta o cluster de MongoDB Atlas.
+4. Un usuario de Atlas con permisos de lectura y escritura.
+5. Una IP autorizada en la lista de acceso de Atlas.
+6. La URI de conexión disponible de forma privada.
+
+### 24.2 Creación del entorno virtual
+
+En Windows PowerShell:
+
+```powershell
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+python --version
+```
+
+El entorno virtual aísla PyMongo, Faker y `python-dotenv` del Python global. Así se evita
+que otra aplicación cambie accidentalmente las versiones que utiliza Hyperflix.
+
+En Linux o macOS:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python --version
+```
+
+### 24.3 Instalación de dependencias
+
+```powershell
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+python -m pip check
+```
+
+`pip check` verifica que no existan dependencias incompatibles entre los paquetes
+instalados. Para registrar todas las versiones reales del entorno:
+
+```powershell
+python -m pip freeze > requirements-lock.txt
+```
+
+El archivo de requisitos actual expresa las dependencias directas del proyecto. Un archivo
+de lock incluiría también dependencias transitivas y sería útil para una entrega con
+reproducibilidad estricta.
+
+### 24.4 Configuración del archivo `.env`
+
+La plantilla puede contener:
+
+```text
+MONGO_URI=mongodb+srv://usuario:contrasena@cluster.mongodb.net/?retryWrites=true&w=majority
+DB_NAME=HYPERFLIX-BD
+```
+
+En el entorno original se utilizó `taller-conexion-mongo/.env` y la clave `mongo_uri` en
+minúscula. `config.py` soporta ambas variantes. El valor real nunca debe pegarse en el
+informe, en el README ni en un commit.
+
+### 24.5 Compatibilidad por sistema operativo
+
+| Componente | Windows | Linux/macOS |
+| --- | --- | --- |
+| Activar entorno | `.venv\\Scripts\\Activate.ps1` | `source .venv/bin/activate` |
+| Ejecutar Python | `python` o `.venv\\Scripts\\python.exe` | `python3` o `.venv/bin/python` |
+| Separador de rutas | `\\` | `/` |
+| Código fuente | Compatible | Compatible |
+
+El código usa `pathlib` para las rutas internas, pero los comandos de activación del
+entorno dependen del sistema operativo.
+
+## 25. Por qué esta combinación tecnológica
+
+### 25.1 Python + PyMongo
+
+La combinación permite escribir un pipeline completo con pocas capas: Python controla el
+flujo y PyMongo ejecuta las operaciones cerca de los datos. No se necesita un ORM porque
+MongoDB trabaja directamente con documentos y las colecciones no requieren clases
+adicionales para este alcance.
+
+### 25.2 MongoDB Atlas
+
+Atlas se utiliza como servicio administrado para evitar instalar y mantener un servidor
+MongoDB local. Proporciona conexión remota, autenticación, monitoreo básico y un cluster
+replicado administrado por el proveedor. Es adecuado para demostrar una base documental
+con datos operacionales y una colección analítica materializada.
+
+### 25.3 Faker
+
+El taller necesita miles de usuarios, películas y reproducciones. Faker permite generar
+esos datos sin exponer información personal real. La semilla no se fija en el código, por
+lo que cada corrida puede producir valores diferentes en nombres, fechas y atributos
+aleatorios, aunque los identificadores principales son deterministas.
+
+### 25.4 Variables de entorno
+
+Separar secretos de la configuración evita que una contraseña quede incorporada en una
+imagen, un archivo Python o un commit. `.gitignore` excluye `.env`, mientras que
+`.env.example` puede compartirse como plantilla sin valores reales.
+
+### 25.5 Aggregation Pipeline
+
+La Aggregation Pipeline fue preferida frente a descargar todos los documentos a Python
+porque los `$lookup`, `$group`, `$sort`, `$project` y `$merge` se ejecutan dentro de
+MongoDB. Esto reduce transferencia de datos y centraliza la transformación cerca del
+almacenamiento.
+
+## 26. Reproducibilidad exacta y control de versiones
+
+Para reproducir el mismo entorno funcional se deben conservar:
+
+- versión de Python: `3.12.10`;
+- versión de PyMongo: `4.17.0`;
+- versión de `python-dotenv`: `1.2.3`;
+- versión de Faker: `40.38.0`;
+- el mismo archivo de configuración, sin compartir sus secretos;
+- acceso a un cluster Atlas autorizado;
+- los commits del proyecto.
+
+El archivo `requirements.txt` fija solo PyMongo. Por tanto, para una reproducción exacta
+de todas las dependencias se recomienda guardar un lock generado desde el entorno:
+
+```powershell
+.venv\Scripts\python.exe -m pip freeze > requirements-lock.txt
+```
+
+No se agregó automáticamente ese lock en esta documentación porque el proyecto actual no
+lo tenía versionado. La diferencia entre una restricción mínima (`>=`) y una versión fija
+(`==`) debe explicarse en el informe: la primera permite actualizaciones compatibles; la
+segunda prioriza repetibilidad y control.
+
+## 27. Conclusión
 
 El sistema implementa un pipeline completo y reproducible de streaming en MongoDB Atlas:
 conecta, crea el modelo, genera datos, enriquece reproducciones, construye una capa
