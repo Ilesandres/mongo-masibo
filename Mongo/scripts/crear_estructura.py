@@ -11,79 +11,94 @@ import pymongo
 import config
 
 
-def crear_estructura_ventas():
+def crear_estructura_hyperflix():
+    if not config.MONGO_URI:
+        raise RuntimeError("No se encontró MONGO_URI en el archivo .env configurado.")
+
     client = pymongo.MongoClient(config.MONGO_URI)
     db = client[config.DB_NAME]
-    print("🏗️ Creando estructura de base de datos de ventas...\n")
+    print(f"🏗️ Creando estructura de HYPERFLIX ({config.DB_NAME})...\n")
 
     print("📦 Creando colecciones transaccionales (OLTP)...")
     for col in config.COLECCIONES_OLTP:
-        db.create_collection(col)
+        if col not in db.list_collection_names():
+            db.create_collection(col)
         print(f"  ✅ Colección '{col}' creada")
 
     print("\n🔍 Creando índices...")
-    db.clientes.create_index([("email", 1)], unique=True)
-    db.productos.create_index([("sku", 1)], unique=True)
-    db.ventas.create_index([("fecha_venta", -1)])
-    db.ventas.create_index([("cliente_id", 1)])
+    db.usuarios.create_index([("email", 1)], unique=True)
+    db.peliculas.create_index([("codigo_pelicula", 1)], unique=True)
+    db.reproducciones.create_index([("codigo_reproduccion", 1)], unique=True)
+    db.reproducciones.create_index([("fecha_reproduccion", -1)])
+    db.reproducciones.create_index([("usuario_id", 1)])
     print("  ✅ Índices creados")
 
     print("\n📝 Insertando datos de prueba...")
-    cliente_ejemplo = {
-        "codigo_cliente": "CLI001",
-        "nombre": "Juan Pérez",
-        "email": "juan.perez@email.com",
-        "telefono": "3001234567",
+    usuario_ejemplo = {
+        "codigo_usuario": "USU001",
+        "nombre": "Ana García",
+        "email": "ana.garcia@email.com",
+        "telefono": "3009876543",
         "direccion": {
-            "calle": "Calle 123 #45-67",
+            "calle": "Carrera 7 #12-34",
             "ciudad": "Bogotá",
             "pais": "Colombia",
         },
         "fecha_registro": datetime.now(),
         "activo": True,
+        "plan": "Premium",
     }
-    db.clientes.insert_one(cliente_ejemplo)
-    print("  ✅ Cliente insertado")
+    db.usuarios.update_one(
+        {"codigo_usuario": usuario_ejemplo["codigo_usuario"]},
+        {"$setOnInsert": usuario_ejemplo},
+        upsert=True,
+    )
+    print("  ✅ Usuario insertado")
 
-    producto_ejemplo = {
-        "sku": "PROD001",
-        "nombre": "Laptop Dell XPS 15",
-        "categoria": "Electrónica",
-        "precio_unitario": 4500000,
-        "stock": 25,
-        "proveedor": "Dell Colombia S.A.S",
-        "fecha_creacion": datetime.now(),
+    pelicula_ejemplo = {
+        "codigo_pelicula": "PEL001",
+        "titulo": "Interstelar Virtual",
+        "genero": "Ciencia Ficción",
+        "anio": 2025,
+        "duracion_min": 148,
+        "director": "Director Ejemplo",
+        "fecha_estreno": datetime(2025, 6, 15),
     }
-    db.productos.insert_one(producto_ejemplo)
-    print("  ✅ Producto insertado")
+    db.peliculas.update_one(
+        {"codigo_pelicula": pelicula_ejemplo["codigo_pelicula"]},
+        {"$setOnInsert": pelicula_ejemplo},
+        upsert=True,
+    )
+    print("  ✅ Película insertada")
 
-    venta_ejemplo = {
-        "numero_factura": "FAC-2026-0001",
-        "cliente_id": db.clientes.find_one({"codigo_cliente": "CLI001"})["_id"],
-        "fecha_venta": datetime.now(),
-        "items": [
-            {
-                "producto_id": db.productos.find_one({"sku": "PROD001"})["_id"],
-                "cantidad": 1,
-                "precio_unitario": 4500000,
-                "subtotal": 4500000,
-            }
-        ],
-        "total": 4500000,
-        "metodo_pago": "Tarjeta de Crédito",
+    reproduccion_ejemplo = {
+        "codigo_reproduccion": "REP-2026-0001",
+        "usuario_id": db.usuarios.find_one({"codigo_usuario": "USU001"})["_id"],
+        "pelicula_id": db.peliculas.find_one({"codigo_pelicula": "PEL001"})["_id"],
+        "fecha_reproduccion": datetime.now(),
+        "dispositivo": "Smart TV",
+        "calidad": "4K",
         "estado": "Completada",
+        "minutos_visualizados": 148,
+        "progreso_pct": 100.0,
+        "valor_estimado": round(148 * config.TARIFA_POR_MINUTO, 2),
     }
-    db.ventas.insert_one(venta_ejemplo)
-    print("  ✅ Venta insertada")
+    db.reproducciones.update_one(
+        {"codigo_reproduccion": reproduccion_ejemplo["codigo_reproduccion"]},
+        {"$setOnInsert": reproduccion_ejemplo},
+        upsert=True,
+    )
+    print("  ✅ Reproducción insertada")
 
     print("\n📊 Creando colección analítica (OLAP)...")
-    db.create_collection(config.COLECCION_OLAP)
+    if config.COLECCION_OLAP not in db.list_collection_names():
+        db.create_collection(config.COLECCION_OLAP)
     print(f"  ✅ Colección '{config.COLECCION_OLAP}' creada")
 
-    print("\n✅ Estructura de ventas creada exitosamente en Atlas!")
+    print("\n✅ Estructura de HYPERFLIX creada exitosamente en Atlas!")
     print("🔍 Abre MongoDB Compass para ver las colecciones creadas.")
     client.close()
 
 
 if __name__ == "__main__":
-    crear_estructura_ventas()
+    crear_estructura_hyperflix()

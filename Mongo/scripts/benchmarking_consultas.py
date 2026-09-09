@@ -12,7 +12,10 @@ import config
 
 
 def ejecutar_benchmark():
-    print("🚀 Iniciando Benchmarking de Consultas Analíticas...\n")
+    if not config.MONGO_URI:
+        raise RuntimeError("No se encontró MONGO_URI en el archivo .env configurado.")
+
+    print("🚀 Iniciando Benchmarking de Consultas Analíticas (Hyperflix)...\n")
     client = pymongo.MongoClient(config.MONGO_URI)
     db = client[config.DB_NAME]
     coleccion = db[config.COLECCION_OLAP]
@@ -24,53 +27,53 @@ def ejecutar_benchmark():
 
     consultas = [
         {
-            "nombre": "1. Ventas totales mensuales",
+            "nombre": "1. Reproducciones y minutos totales mensuales",
             "pipeline": [
                 {"$group": {"_id": {"anio": "$anio", "mes": "$mes"},
-                            "ingresos_totales": {"$sum": "$total_venta"},
-                            "transacciones": {"$sum": 1}}},
+                            "minutos_totales": {"$sum": "$minutos_visualizados"},
+                            "reproducciones": {"$sum": 1}}},
                 {"$sort": {"_id.anio": 1, "_id.mes": 1}},
             ],
         },
         {
-            "nombre": "2. Top 5 Productos por Categoría",
+            "nombre": "2. Top 5 Películas por Género",
             "pipeline": [
-                {"$group": {"_id": {"categoria": "$producto.categoria", "producto": "$producto.nombre"},
-                            "ingresos": {"$sum": "$total_venta"},
-                            "unidades": {"$sum": "$cantidad"}}},
-                {"$sort": {"_id.categoria": 1, "ingresos": -1}},
-                {"$group": {"_id": "$_id.categoria",
-                            "todos_productos": {"$push": {"producto": "$_id.producto", "ingresos": "$ingresos"}}}},
-                {"$project": {"categoria": "$_id", "top_productos": {"$slice": ["$todos_productos", 5]}, "_id": 0}},
+                {"$group": {"_id": {"genero": "$pelicula.genero", "pelicula": "$pelicula.titulo"},
+                            "ingresos": {"$sum": "$valor_estimado"},
+                            "minutos": {"$sum": "$minutos_visualizados"}}},
+                {"$sort": {"_id.genero": 1, "ingresos": -1}},
+                {"$group": {"_id": "$_id.genero",
+                            "todos_titulos": {"$push": {"pelicula": "$_id.pelicula", "ingresos": "$ingresos"}}}},
+                {"$project": {"genero": "$_id", "top_peliculas": {"$slice": ["$todos_titulos", 5]}, "_id": 0}},
             ],
         },
         {
             "nombre": "3. Rendimiento por Segmento y Ciudad",
             "pipeline": [
                 {"$match": {"estado": "Completada"}},
-                {"$group": {"_id": {"segmento": "$cliente.segmento", "ciudad": "$cliente.ciudad"},
-                            "ingresos": {"$sum": "$total_venta"},
+                {"$group": {"_id": {"segmento": "$usuario.segmento", "ciudad": "$usuario.ciudad"},
+                            "ingresos": {"$sum": "$valor_estimado"},
                             "ganancia_estimada": {"$sum": "$ganancia_estimada"}}},
                 {"$sort": {"ingresos": -1}},
             ],
         },
         {
-            "nombre": "4. Ticket Promedio por Método de Pago",
+            "nombre": "4. Valor Promedio por Dispositivo",
             "pipeline": [
                 {"$match": {"estado": "Completada"}},
-                {"$group": {"_id": "$metodo_pago",
-                            "ticket_promedio": {"$avg": "$total_venta"},
-                            "total_transacciones": {"$sum": 1},
-                            "ingresos_totales": {"$sum": "$total_venta"}}},
-                {"$sort": {"ingresos_totales": -1}},
+                {"$group": {"_id": "$dispositivo",
+                            "valor_promedio": {"$avg": "$valor_estimado"},
+                            "total_reproducciones": {"$sum": 1},
+                            "valor_total": {"$sum": "$valor_estimado"}}},
+                {"$sort": {"valor_total": -1}},
             ],
         },
         {
-            "nombre": "5. Ventas por Día de la Semana",
+            "nombre": "5. Reproducciones por Día de la Semana",
             "pipeline": [
-                {"$addFields": {"dia_semana": {"$dayOfWeek": "$fecha_venta"}}},
-                {"$group": {"_id": "$dia_semana", "ingresos": {"$sum": "$total_venta"},
-                            "ventas_count": {"$sum": 1}}},
+                {"$addFields": {"dia_semana": {"$dayOfWeek": "$fecha_reproduccion"}}},
+                {"$group": {"_id": "$dia_semana", "ingresos": {"$sum": "$valor_estimado"},
+                            "reproducciones_count": {"$sum": 1}}},
                 {"$sort": {"_id": 1}},
             ],
         },

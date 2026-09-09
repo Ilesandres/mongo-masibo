@@ -1,19 +1,20 @@
-# Almacenamiento Masivo — MongoDB Atlas / PyMongo
+# Hyperflix — MongoDB Atlas / PyMongo
 
-Implementación práctica de una arquitectura de datos con **MongoDB Atlas + PyMongo**: sistema de ventas con 5 fases (conexión, modelo OLTP/OLAP, generación masiva, ETL y benchmarking).
+Implementación práctica de un sistema de streaming de películas con **MongoDB Atlas + PyMongo**. Hyperflix administra usuarios, catálogo de películas, reproducciones y consultas analíticas en cinco fases.
 
 Corresponde al **PARCIAL BD PRIMER CORTE** del curso IPT (Arquitectura de Datos). Las guías y documentos base viven en `taller-conexion-mongo/` y **no se versionan** (ver `.gitignore`).
 
 ## Estructura
 
 ```
-├── Mongo/                      # Implementación real
+├── Mongo/                      # Implementación real de Hyperflix
 │   ├── conexion.py             # Fase 1 — conexión a Atlas
 │   ├── scripts/
+│   │   ├── limpiar_bd.py                  # Reinicio controlado de la base
 │   │   ├── crear_estructura.py            # Fase 2 — colecciones + índices + ejemplo
-│   │   ├── generar_datos_masivos.py       # Fase 3 — 5.000 clientes, 1.000 productos, 50.000 ventas
-│   │   ├── transformar_oltp_a_olap.py     # Fase 4 — ETL (Aggregation Pipeline) → modelo estrella
-│   │   └── benchmarking_consultas.py      # Fase 5 — índices compuestos + 5 consultas + latencias
+│   │   ├── generar_datos_masivos.py       # Fase 3 — 5.000 usuarios, 1.000 películas, 50.000 reproducciones
+│   │   ├── transformar_oltp_a_olap.py     # Fase 4 — ETL → modelo analítico
+│   │   └── benchmarking_consultas.py      # Fase 5 — índices + consultas de streaming
 │   ├── data_lake/{raw,processed,curated} # Zonas del data lake (no versionado)
 │   └── docs/                   # Documentación del informe
 ├── config.py                   # Constantes centralizadas (lee secretos desde el .env)
@@ -55,6 +56,9 @@ Correr siempre desde la raíz del proyecto, con el venv activado:
 # Fase 1 — Probar conexión a Atlas
 python Mongo/conexion.py
 
+# Opcional — Limpiar la BD antes de una corrida desde cero (pide confirmación)
+python Mongo/scripts/limpiar_bd.py
+
 # Fase 2 — Crear estructura (colecciones, índices, datos de ejemplo)
 python Mongo/scripts/crear_estructura.py
 
@@ -67,6 +71,8 @@ python Mongo/scripts/transformar_oltp_a_olap.py
 # Fase 5 — Benchmarking de consultas analíticas
 python Mongo/scripts/benchmarking_consultas.py
 ```
+
+La corrida completa deja estas colecciones: `usuarios`, `peliculas`, `reproducciones` y `reproducciones_analiticas`. La fase 4 conserva el `_id` de cada reproducción y usa `$merge` con `whenMatched: replace`, por lo que puede repetirse sin duplicar datos analíticos.
 
 ## No se versiona (`.gitignore`)
 

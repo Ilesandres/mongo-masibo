@@ -36,17 +36,21 @@ def insertar_en_lotes(coleccion, datos, nombre_entidad):
 
 
 def generar_datos():
-    print("🚀 Iniciando generación de datos masivos para MongoDB Atlas...\n")
+    if not config.MONGO_URI:
+        raise RuntimeError("No se encontró MONGO_URI en el archivo .env configurado.")
+
+    print("🚀 Iniciando generación de datos masivos para HYPERFLIX (MongoDB Atlas)...\n")
     db = conectar_bd()
     inicio_total = time.time()
 
-    print("👤 Generando clientes...")
-    clientes = []
-    for _ in range(config.NUM_CLIENTES):
-        clientes.append({
-            "codigo_cliente": f"CLI{random.randint(10000, 99999)}",
+    print("👤 Generando usuarios...")
+    planes = ["Básico", "Estándar", "Estándar", "Premium", "Premium"]
+    usuarios = []
+    for indice in range(config.NUM_USUARIOS):
+        usuarios.append({
+            "codigo_usuario": f"USU{indice + 1:05d}",
             "nombre": fake.name(),
-            "email": f"{fake.user_name()}{random.randint(1000, 9999)}@{fake.free_email_domain()}",
+            "email": f"usuario{indice + 1}@hyperflix.local",
             "telefono": fake.phone_number(),
             "direccion": {
                 "calle": fake.street_address(),
@@ -55,68 +59,67 @@ def generar_datos():
             },
             "fecha_registro": fake.date_time_between(start_date='-2y', end_date='now'),
             "activo": random.choice([True, True, True, False]),
+            "plan": random.choice(planes),
         })
-    insertar_en_lotes(db.clientes, clientes, "clientes")
-    clientes_ids = [c["_id"] for c in db.clientes.find({}, {"_id": 1})]
+    insertar_en_lotes(db.usuarios, usuarios, "usuarios")
+    usuarios_ids = [u["_id"] for u in db.usuarios.find({}, {"_id": 1})]
 
-    print("📦 Generando productos...")
-    categorias = ["Electrónica", "Hogar", "Ropa", "Deportes", "Juguetes", "Libros"]
-    productos = []
-    for _ in range(config.NUM_PRODUCTOS):
-        productos.append({
-            "sku": f"PROD{random.randint(10000, 99999)}",
-            "nombre": f"{fake.word().capitalize()} {fake.word().capitalize()}",
-            "categoria": random.choice(categorias),
-            "precio_unitario": round(random.uniform(10000, 5000000), 2),
-            "stock": random.randint(0, 500),
-            "proveedor": fake.company(),
-            "fecha_creacion": fake.date_time_between(start_date='-1y', end_date='now'),
+    print("🎬 Generando películas...")
+    generos = ["Acción", "Comedia", "Drama", "Ciencia Ficción", "Terror", "Documental", "Romance"]
+    peliculas = []
+    for indice in range(config.NUM_PELICULAS):
+        anio = random.randint(1990, 2026)
+        peliculas.append({
+            "codigo_pelicula": f"PEL{indice + 1:05d}",
+            "titulo": f"{fake.word().capitalize()} {fake.word().capitalize()}",
+            "genero": random.choice(generos),
+            "anio": anio,
+            "duracion_min": random.randint(75, 180),
+            "director": fake.name(),
+            "fecha_estreno": fake.date_time_between(
+                start_date=f"-{2026 - anio}y", end_date='now'),
         })
-    insertar_en_lotes(db.productos, productos, "productos")
-    productos_db = list(db.productos.find({}, {"_id": 1, "precio_unitario": 1, "nombre": 1}))
+    insertar_en_lotes(db.peliculas, peliculas, "películas")
+    peliculas_db = list(db.peliculas.find({}, {"_id": 1, "titulo": 1, "duracion_min": 1}))
 
-    print("💰 Generando ventas (esto puede tomar unos minutos)...")
-    metodos_pago = ["Tarjeta de Crédito", "Tarjeta Débito", "Nequi", "DaviPlata", "Efectivo", "PSE"]
-    estados = ["Completada", "Completada", "Completada", "Pendiente", "Cancelada"]
-    ventas = []
-    for _ in range(config.NUM_VENTAS):
-        num_items = random.randint(1, 5)
-        items_venta = random.sample(productos_db, num_items)
-        total_venta = 0
-        items_detalle = []
-        for prod in items_venta:
-            cantidad = random.randint(1, 3)
-            subtotal = prod["precio_unitario"] * cantidad
-            total_venta += subtotal
-            items_detalle.append({
-                "producto_id": prod["_id"],
-                "nombre_producto": prod["nombre"],
-                "cantidad": cantidad,
-                "precio_unitario": prod["precio_unitario"],
-                "subtotal": round(subtotal, 2),
-            })
-        ventas.append({
-            "numero_factura": f"FAC-{fake.year()}-{random.randint(100000, 999999)}",
-            "cliente_id": random.choice(clientes_ids),
-            "fecha_venta": fake.date_time_between(start_date='-1y', end_date='now'),
-            "items": items_detalle,
-            "total": round(total_venta, 2),
-            "metodo_pago": random.choice(metodos_pago),
-            "estado": random.choice(estados),
+    print("📺 Generando reproducciones (esto puede tomar unos minutos)...")
+    dispositivos = ["Smart TV", "Smartphone", "Tablet", "PC", "Consola"]
+    calidades = ["SD", "HD", "HD", "4K"]
+    estados = ["Completada", "Completada", "Completada", "Interrumpida", "Pendiente"]
+    reproducciones = []
+    for indice in range(config.NUM_REPRODUCCIONES):
+        pelicula = random.choice(peliculas_db)
+        duracion = pelicula["duracion_min"]
+        estado = random.choice(estados)
+        if estado == "Completada":
+            minutos = duracion
+        else:
+            minutos = random.randint(5, max(6, duracion - 1))
+        reproducciones.append({
+            "codigo_reproduccion": f"REP-2026-{indice + 1:06d}",
+            "usuario_id": random.choice(usuarios_ids),
+            "pelicula_id": pelicula["_id"],
+            "fecha_reproduccion": fake.date_time_between(start_date='-1y', end_date='now'),
+            "dispositivo": random.choice(dispositivos),
+            "calidad": random.choice(calidades),
+            "estado": estado,
+            "minutos_visualizados": minutos,
+            "progreso_pct": round(min(minutos / duracion * 100, 100), 1),
+            "valor_estimado": round(minutos * config.TARIFA_POR_MINUTO, 2),
         })
-        if len(ventas) >= config.BATCH_SIZE:
-            insertar_en_lotes(db.ventas, ventas, "ventas (lote)")
-            ventas = []
-    if len(ventas) > 0:
-        insertar_en_lotes(db.ventas, ventas, "ventas (lote final)")
+        if len(reproducciones) >= config.BATCH_SIZE:
+            insertar_en_lotes(db.reproducciones, reproducciones, "reproducciones (lote)")
+            reproducciones = []
+    if len(reproducciones) > 0:
+        insertar_en_lotes(db.reproducciones, reproducciones, "reproducciones (lote final)")
 
     tiempo_total = time.time() - inicio_total
     print("=" * 50)
     print("🎉 ¡GENERACIÓN DE DATOS COMPLETADA!")
     print(f"⏱️  Tiempo total de ejecución: {tiempo_total:.2f} segundos")
-    print(f"📊 Clientes en BD: {db.clientes.count_documents({})}")
-    print(f"📦 Productos en BD: {db.productos.count_documents({})}")
-    print(f"💰 Ventas en BD: {db.ventas.count_documents({})}")
+    print(f"👤 Usuarios en BD: {db.usuarios.count_documents({})}")
+    print(f"🎬 Películas en BD: {db.peliculas.count_documents({})}")
+    print(f"📺 Reproducciones en BD: {db.reproducciones.count_documents({})}")
     print("=" * 50)
     db.client.close()
 

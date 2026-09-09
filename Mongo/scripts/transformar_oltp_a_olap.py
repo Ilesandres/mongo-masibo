@@ -11,74 +11,77 @@ import config
 
 
 def transformar_datos():
-    print("🔄 Iniciando transformación de datos OLTP a OLAP (Modelo Estrella)...\n")
+    if not config.MONGO_URI:
+        raise RuntimeError("No se encontró MONGO_URI en el archivo .env configurado.")
+
+    print("🔄 Iniciando transformación de datos OLTP a OLAP (Modelo Estrella - streaming)...\n")
     client = pymongo.MongoClient(config.MONGO_URI)
     db = client[config.DB_NAME]
     inicio = time.time()
 
     pipeline = [
         {"$lookup": {
-            "from": "clientes",
-            "localField": "cliente_id",
+            "from": "usuarios",
+            "localField": "usuario_id",
             "foreignField": "_id",
-            "as": "info_cliente",
+            "as": "info_usuario",
         }},
-        {"$unwind": "$info_cliente"},
-        {"$unwind": "$items"},
+        {"$unwind": "$info_usuario"},
         {"$lookup": {
-            "from": "productos",
-            "localField": "items.producto_id",
+            "from": "peliculas",
+            "localField": "pelicula_id",
             "foreignField": "_id",
-            "as": "info_producto",
+            "as": "info_pelicula",
         }},
-        {"$unwind": "$info_producto"},
+        {"$unwind": "$info_pelicula"},
         {"$project": {
-            "_id": 0,
-            "fecha_venta": 1,
-            "anio": {"$year": "$fecha_venta"},
-            "mes": {"$month": "$fecha_venta"},
-            "dia": {"$dayOfMonth": "$fecha_venta"},
-            "cliente": {
-                "id": "$info_cliente._id",
-                "nombre": "$info_cliente.nombre",
-                "ciudad": "$info_cliente.direccion.ciudad",
+            "_id": 1,
+            "fecha_reproduccion": 1,
+            "anio": {"$year": "$fecha_reproduccion"},
+            "mes": {"$month": "$fecha_reproduccion"},
+            "dia": {"$dayOfMonth": "$fecha_reproduccion"},
+            "usuario": {
+                "id": "$info_usuario._id",
+                "nombre": "$info_usuario.nombre",
+                "ciudad": "$info_usuario.direccion.ciudad",
                 "segmento": {
                     "$cond": [
-                        {"$gte": ["$total", 5000000]},
-                        "Premium",
+                        {"$gte": ["$valor_estimado", config.SEGMENTO_COMPLETO_MIN]},
+                        "Completo",
                         {
                             "$cond": [
-                                {"$gte": ["$total", 1000000]},
-                                "Frecuente",
-                                "Regular",
+                                {"$gte": ["$valor_estimado", config.SEGMENTO_PARCIAL_MIN]},
+                                "Parcial",
+                                "Corto",
                             ]
                         },
                     ]
                 },
             },
-            "producto": {
-                "id": "$info_producto._id",
-                "nombre": "$info_producto.nombre",
-                "categoria": "$info_producto.categoria",
-                "marca": "$info_producto.proveedor",
+            "pelicula": {
+                "id": "$info_pelicula._id",
+                "titulo": "$info_pelicula.titulo",
+                "genero": "$info_pelicula.genero",
+                "director": "$info_pelicula.director",
             },
-            "cantidad": "$items.cantidad",
-            "precio_unitario": "$items.precio_unitario",
-            "total_venta": "$items.subtotal",
-            "ganancia_estimada": {"$multiply": ["$items.subtotal", config.MARGEN_GANANCIA]},
-            "numero_factura": 1,
-            "metodo_pago": 1,
+            "minutos_visualizados": 1,
+            "valor_estimado": 1,
+            "ganancia_estimada": {"$multiply": ["$valor_estimado", config.MARGEN_GANANCIA]},
+            "codigo_reproduccion": 1,
+            "dispositivo": 1,
+            "calidad": 1,
             "estado": 1,
         }},
         {"$merge": {
             "into": config.COLECCION_OLAP,
             "on": "_id",
+            "whenMatched": "replace",
             "whenNotMatched": "insert",
         }},
     ]
 
     print("⚙️ Ejecutando Aggregation Pipeline...")
-    list(db.ventas.aggregate(pipeline, allowDiskUse=True))
+    list(db.reproducciones.aggregate(pipeline, allowDiskUse=True))
     tiempo_total = time.time() - inicio
     total_analitico = db[config.COLECCION_OLAP].count_documents({})
     print("=" * 60)
