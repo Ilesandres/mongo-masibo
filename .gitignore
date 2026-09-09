@@ -1,0 +1,32 @@
+# ── Secretos ──────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+
+# ── Documentos guía (contexto base, NO se publican) ──────
+taller-conexion-mongo/
+*.docx
+
+# ── Memoria interna del proyecto (NO se publica) ─────────
+agents/
+
+# ── Python ───────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.python-version
+
+# ── Datos del laboratorio ─────────────────────────────────
+data_lake/raw/*.json
+data_lake/processed/*.parquet
+data_lake/
+*.csv
+*.parquet
+
+# ── Entornos / IDEs ──────────────────────────────────────
+.idea/
+.vscode/
+Thumbs.db
+.DS_Store

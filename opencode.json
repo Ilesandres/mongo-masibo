@@ -1,0 +1,11 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "instructions": ["AGENTS.md"],
+  "mcp": {
+    "markitdown": {
+      "type": "local",
+      "command": ["markitdown-mcp"],
+      "enabled": true
+    }
+  }
+}
