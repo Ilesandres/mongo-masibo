@@ -112,7 +112,7 @@ python Mongo/scripts/data_lake_pipeline.py
 
 `streaming.py` escucha cambios en la colección `reproducciones` mediante **MongoDB Change Streams** (simula un **Kafka Consumer** + procesamiento continuo estilo Spark), y `generar_reproducciones_streaming.py` genera los eventos (insert/update/delete) tal como lo haría la aplicación web.
 
-> Requisito: Change Streams necesita un **Replica Set**. En Atlas NO está disponible en clusters gratuitos **M0/M2** (usar M10+, un Replica Set local o MongoDB vía Docker).
+> Requisito: Change Streams necesita un **Replica Set**. En Atlas NO está disponible en clusters gratuitos **M0/M2** (usar M10+, un Replica Set local o MongoDB vía Docker). Si el cluster no lo soporta, el consumidor lo detecta y cae automáticamente a un **modo fallback de polling** (degradado: ve el arribo de reproducciones, sin eventos UPDATE/DELETE).
 
 ```bash
 # TERMINAL 1 — Consumidor: escucha y procesa eventos (dejar abierta)
@@ -123,7 +123,7 @@ python Mongo/scripts/generar_reproducciones_streaming.py
 # (opcional) pasar el número de eventos:  python Mongo/scripts/generar_reproducciones_streaming.py 60
 ```
 
-Cada evento aparece en la Terminal 1 al instante (sin reiniciar): `INSERT` (usuario inicia la reproducción, estado Pendiente), `UPDATE` (finaliza como Completada/Interrumpida con minutos y valor) y ocasionalmente `DELETE` (auditoría). Incluye una **alerta de regla de negocio** (`🚨 ALERTA`) cuando una reproducción completada supera el umbral `SEGMENTO_COMPLETO_MIN` (película larga de alto valor).
+Cada evento aparece en la Terminal 1 al instante (sin reiniciar): `INSERT` (usuario inicia la reproducción, estado Pendiente), `UPDATE` (finaliza como Completada/Interrumpida con minutos, % de progreso, dispositivo y calidad) y ocasionalmente `DELETE` (auditoría). Incluye una **alerta de regla de negocio** (`🚨 ALERTA`) apuntada al dominio de streaming: una reproducción **completada** de una **película larga** (≥ `MINUTOS_MARATON` = 120 min) en una sola sesión = **maratón**.
 
 | Laboratorio (este repo) | Producción |
 | --- | --- |
