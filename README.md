@@ -146,7 +146,21 @@ Este flujo implementa el patrón **Change Data Capture (CDC)**: la BD notifica i
 2. **Segmentación de clientes** — "¿Qué tipo de clientes tenemos?" (join fact ↔ usuario, métricas por cliente y clasificación con `F.when` → VIP/Premium/Frecuente/Regular).
 3. **Evolución mensual** — "¿Cómo evoluciona el consumo por mes?" (`to_date` + `year`/`month` + `groupBy("anio","mes")` → tendencias para dashboards).
 
-> Requisito previo: **Java instalado** (PySpark corre sobre la JVM). Si falta, el script avisa. Instala con `winget install EclipseAdoptium.Temurin.17.JDK` y define `JAVA_HOME`. Es necesario haber corrido la **Fase 6** (zona CURATED) antes.
+> Requisito previo: **Java instalado** (PySpark corre sobre la JVM; `pip install pyspark` no basta). Si falta, el script avisa y corta.
+
+**Preparar Java en Windows** (una sola vez):
+
+```powershell
+# 1. Instalar OpenJDK 17 (Adoptium/Temurin)
+winget install EclipseAdoptium.Temurin.17.JDK
+
+# 2. Definir JAVA_HOME (ajusta la ruta a tu versión instalada) y reiniciar la terminal
+$env:JAVA_HOME = "C:\Program Files\Eclipse Adoptium\jdk-17.0.15.6-hotspot"
+[Environment]::SetEnvironmentVariable("JAVA_HOME", $env:JAVA_HOME, "User")
+[Environment]::SetEnvironmentVariable("Path", $env:Path + ";%JAVA_HOME%\bin", "User")
+```
+
+> La versión real de la carpeta puede verse con `Get-ChildItem "C:\Program Files\Eclipse Adoptium"`. Es necesario haber corrido la **Fase 6** (zona CURATED) antes.
 
 ```bash
 # Fase 8 — Ejecuta los 3 Spark Jobs sobre el data lake (curated/spark)
