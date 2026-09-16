@@ -42,6 +42,14 @@ SEGMENTO_COMPLETO_MIN = 90_000
 SEGMENTO_PARCIAL_MIN = 30_000
 MINUTOS_MARATON = 120  # alerta en streaming: película larga completada en una sola sesión
 
+# ── Segmentación de clientes (Spark Job 2) ───────────────
+SEGMENTO_VIP_MIN = 10_000_000
+SEGMENTO_PREMIUM_MIN = 2_000_000
+SEGMENTO_FRECUENTE_MIN = 500_000
+
+# ── Apache Spark ──────────────────────────────────────────
+SPARK_APP_NAME = "Hyperflix-BigData"
+
 # ── Data Lake ──────────────────────────────────────────────
 DATA_LAKE_ROOT = Path(__file__).resolve().parent / "Mongo" / "data_lake"
 ZONAS_DATALAKE = {
