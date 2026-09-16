@@ -34,6 +34,20 @@ def transformar_datos():
             "as": "info_pelicula",
         }},
         {"$unwind": "$info_pelicula"},
+        {"$lookup": {
+            "from": "generos",
+            "localField": "info_pelicula.genero_codigo",
+            "foreignField": "codigo_genero",
+            "as": "info_genero",
+        }},
+        {"$unwind": "$info_genero"},
+        {"$lookup": {
+            "from": "directores",
+            "localField": "info_pelicula.director_codigo",
+            "foreignField": "codigo_director",
+            "as": "info_director",
+        }},
+        {"$unwind": "$info_director"},
         {"$project": {
             "_id": 1,
             "fecha_reproduccion": 1,
@@ -61,8 +75,8 @@ def transformar_datos():
             "pelicula": {
                 "id": "$info_pelicula._id",
                 "titulo": "$info_pelicula.titulo",
-                "genero": "$info_pelicula.genero",
-                "director": "$info_pelicula.director",
+                "genero": "$info_genero.nombre",
+                "director": "$info_director.nombre",
             },
             "minutos_visualizados": 1,
             "valor_estimado": 1,
