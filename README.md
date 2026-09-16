@@ -27,8 +27,10 @@ Corresponde al **PARCIAL BD PRIMER CORTE** del curso IPT (Arquitectura de Datos)
 │   │   ├── data_lake_pipeline.py          # Fase 6 — pipeline RAW/PROCESSED/CURATED
 │   │   ├── benchmarking_consultas.py      # Fase 5 — índices + consultas de streaming
 │   │   ├── streaming.py                   # Fase 7 — Change Streams (escucha = Kafka Consumer)
-│   │   └── generar_reproducciones_streaming.py  # Fase 7 — genera eventos en tiempo real
+│   │   ├── generar_reproducciones_streaming.py  # Fase 7 — genera eventos en tiempo real
+│   │   └── spark_jobs.py                  # Fase 8 — 3 Spark Jobs (PySpark) → BI
 │   ├── data_lake/{raw,processed,curated}  # Zonas del data lake (no versionado)
+│   │   └── curated/spark/                 # Resultados de los Spark Jobs (listos para BI)
 │   └── docs/                   # Documentación del informe
 ├── config.py                   # Constantes centralizadas (lee secretos desde el .env)
 ├── requirements.txt
@@ -58,6 +60,7 @@ Cada entidad vive en su propio archivo dentro de `Mongo/models/` y expone una fu
 - **Python 3.8+** (probado con 3.12 en Windows)
 - **MongoDB Atlas** (cluster M0/M10) con credenciales de lectura/escritura
 - **Pandas + PyArrow** para la generación de Parquet (Snappy) del data lake
+- **Java 11/17 (JVM)** + `JAVA_HOME` para Apache Spark (PySpark): `winget install EclipseAdoptium.Temurin.17.JDK`
 - Opcional: MongoDB Compass para inspección visual
 
 Hasta 50.000 reproducciones el cluster gratuito M0 responde bien; con 100.000+ toma **varios minutos** en la fase de generación y exportación RAW.
@@ -134,6 +137,23 @@ Cada evento llega a la Terminal 1 en tiempo real (sin reiniciar). Ahí se agrupa
 | `print()` / alerta | Dashboard, alertas o Data Lake |
 
 Este flujo implementa el patrón **Change Data Capture (CDC)**: la BD notifica inserciones/actualizaciones/eliminaciones automáticamente, sin consultas constantes — el mismo fundamento de Kafka + Spark Streaming.
+
+### Fase 8 — Apache Spark: 3 Jobs de procesamiento (PySpark)
+
+`spark_jobs.py` es el **motor Big Data** del proyecto: Apache Spark lee la zona CURATED del Data Lake (Parquet) y ejecuta **3 Spark Jobs** que dejan tablas listas para **BI / Data Warehouse** (cada una como un Parquet en `data_lake/curated/spark/`):
+
+1. **Consumo por dispositivo** — "¿Qué dispositivo genera más consumo e ingresos?" (agregación con `groupBy` + `count/sum/avg`).
+2. **Segmentación de clientes** — "¿Qué tipo de clientes tenemos?" (join fact ↔ usuario, métricas por cliente y clasificación con `F.when` → VIP/Premium/Frecuente/Regular).
+3. **Evolución mensual** — "¿Cómo evoluciona el consumo por mes?" (`to_date` + `year`/`month` + `groupBy("anio","mes")` → tendencias para dashboards).
+
+> Requisito previo: **Java instalado** (PySpark corre sobre la JVM). Si falta, el script avisa. Instala con `winget install EclipseAdoptium.Temurin.17.JDK` y define `JAVA_HOME`. Es necesario haber corrido la **Fase 6** (zona CURATED) antes.
+
+```bash
+# Fase 8 — Ejecuta los 3 Spark Jobs sobre el data lake (curated/spark)
+python Mongo/scripts/spark_jobs.py
+```
+
+Idea clave: **Pandas prepara los datos** (Fase 6, limpieza/enriquecimiento) y **Spark los procesa de forma distribuida** (Fase 8). El mismo código con `local[*]` (todos los núcleos del equipo) escala casi sin cambios a un clúster de varios nodos.
 
 La corrida completa deja estas colecciones en `HYPERFLIX-BD`: `generos`, `directores`, `planes`, `usuarios`, `peliculas`, `suscripciones`, `pagos`, `resenas`, `reproducciones` y `reproducciones_analiticas`. La Fase 4 conserva el `_id` de cada reproducción y usa `$merge` con `whenMatched: replace`, por lo que puede repetirse sin duplicar datos analíticos. La Fase 6 es idempotente: sobrescribe los archivos `.parquet` de cada zona.
 
