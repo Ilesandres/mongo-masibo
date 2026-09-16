@@ -1,14 +1,23 @@
+import random
 import sys
 from pathlib import Path
 
 sys.stdout.reconfigure(encoding="utf-8")
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-
-from datetime import datetime
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))  # raíz (config)
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # Mongo/ (models)
 
 import pymongo
 
 import config
+from models import director, genero, pago, pelicula, plan, reproduccion, resena, suscripcion, usuario
+
+
+def _insertar_ejemplo(coleccion, documento, campo_unico):
+    coleccion.update_one(
+        {campo_unico: documento[campo_unico]},
+        {"$setOnInsert": documento},
+        upsert=True,
+    )
 
 
 def crear_estructura_hyperflix():
@@ -26,68 +35,67 @@ def crear_estructura_hyperflix():
         print(f"  ✅ Colección '{col}' creada")
 
     print("\n🔍 Creando índices...")
-    db.usuarios.create_index([("email", 1)], unique=True)
-    db.peliculas.create_index([("codigo_pelicula", 1)], unique=True)
-    db.reproducciones.create_index([("codigo_reproduccion", 1)], unique=True)
-    db.reproducciones.create_index([("fecha_reproduccion", -1)])
-    db.reproducciones.create_index([("usuario_id", 1)])
+    for col, campo in config.UNIQUE_INDEXES.items():
+        db[col].create_index([(campo, 1)], unique=True)
+    for col, keys in config.INDEXES_OLTP.items():
+        db[col].create_index(keys)
     print("  ✅ Índices creados")
 
-    print("\n📝 Insertando datos de prueba...")
-    usuario_ejemplo = {
-        "codigo_usuario": "USU001",
-        "nombre": "Ana García",
-        "email": "ana.garcia@email.com",
-        "telefono": "3009876543",
-        "direccion": {
-            "calle": "Carrera 7 #12-34",
-            "ciudad": "Bogotá",
-            "pais": "Colombia",
-        },
-        "fecha_registro": datetime.now(),
-        "activo": True,
-        "plan": "Premium",
-    }
-    db.usuarios.update_one(
-        {"codigo_usuario": usuario_ejemplo["codigo_usuario"]},
-        {"$setOnInsert": usuario_ejemplo},
-        upsert=True,
-    )
+    print("\n📝 Insertando datos de prueba (uno por entidad)...")
+
+    genero_ejemplo = genero.generar(0)
+    _insertar_ejemplo(db.generos, genero_ejemplo, "codigo_genero")
+    print("  ✅ Género insertado")
+
+    director_ejemplo = director.generar(0)
+    _insertar_ejemplo(db.directores, director_ejemplo, "codigo_director")
+    print("  ✅ Director insertado")
+
+    plan_ejemplo = plan.generar(0)
+    _insertar_ejemplo(db.planes, plan_ejemplo, "codigo_plan")
+    print("  ✅ Plan insertado")
+
+    usuario_ejemplo = usuario.generar(0, plan="Básico")
+    _insertar_ejemplo(db.usuarios, usuario_ejemplo, "codigo_usuario")
     print("  ✅ Usuario insertado")
 
-    pelicula_ejemplo = {
-        "codigo_pelicula": "PEL001",
-        "titulo": "Interstelar Virtual",
-        "genero": "Ciencia Ficción",
-        "anio": 2025,
-        "duracion_min": 148,
-        "director": "Director Ejemplo",
-        "fecha_estreno": datetime(2025, 6, 15),
-    }
-    db.peliculas.update_one(
-        {"codigo_pelicula": pelicula_ejemplo["codigo_pelicula"]},
-        {"$setOnInsert": pelicula_ejemplo},
-        upsert=True,
-    )
+    pelicula_ejemplo = pelicula.generar(0, ["GEN-001"], ["DIR-001"])
+    _insertar_ejemplo(db.peliculas, pelicula_ejemplo, "codigo_pelicula")
     print("  ✅ Película insertada")
 
-    reproduccion_ejemplo = {
-        "codigo_reproduccion": "REP-2026-0001",
-        "usuario_id": db.usuarios.find_one({"codigo_usuario": "USU001"})["_id"],
-        "pelicula_id": db.peliculas.find_one({"codigo_pelicula": "PEL001"})["_id"],
-        "fecha_reproduccion": datetime.now(),
-        "dispositivo": "Smart TV",
-        "calidad": "4K",
-        "estado": "Completada",
-        "minutos_visualizados": 148,
-        "progreso_pct": 100.0,
-        "valor_estimado": round(148 * config.TARIFA_POR_MINUTO, 2),
-    }
-    db.reproducciones.update_one(
-        {"codigo_reproduccion": reproduccion_ejemplo["codigo_reproduccion"]},
-        {"$setOnInsert": reproduccion_ejemplo},
-        upsert=True,
+    usuario_id = db.usuarios.find_one({"codigo_usuario": "USU00001"})["_id"]
+    suscripcion_ejemplo = suscripcion.generar(
+        0,
+        [{"_id": usuario_id, "fecha_registro": usuario_ejemplo["fecha_registro"]}],
+        [{"codigo_plan": "PLA-001"}],
     )
+    _insertar_ejemplo(db.suscripciones, suscripcion_ejemplo, "codigo_suscripcion")
+    print("  ✅ Suscripción insertada")
+
+    suscripcion_id = db.suscripciones.find_one({"codigo_suscripcion": "SUS000001"})["_id"]
+    pago_ejemplo = pago.generar(
+        0,
+        [{
+            "_id": suscripcion_id,
+            "precio_mensual": plan_ejemplo["precio_mensual"],
+            "fecha_inicio": suscripcion_ejemplo["fecha_inicio"],
+        }],
+    )
+    _insertar_ejemplo(db.pagos, pago_ejemplo, "codigo_pago")
+    print("  ✅ Pago insertado")
+
+    pelicula_id = db.peliculas.find_one({"codigo_pelicula": "PEL00001"})["_id"]
+    resena_ejemplo = resena.generar(0, [usuario_id], [pelicula_id])
+    _insertar_ejemplo(db.resenas, resena_ejemplo, "codigo_resena")
+    print("  ✅ Reseña insertada")
+
+    reproduccion_ejemplo = reproduccion.generar(
+        0,
+        [usuario_id],
+        [{"_id": pelicula_id, "duracion_min": pelicula_ejemplo["duracion_min"]}],
+        config.TARIFA_POR_MINUTO,
+    )
+    _insertar_ejemplo(db.reproducciones, reproduccion_ejemplo, "codigo_reproduccion")
     print("  ✅ Reproducción insertada")
 
     print("\n📊 Creando colección analítica (OLAP)...")

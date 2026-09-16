@@ -4,14 +4,35 @@ import time
 from pathlib import Path
 
 sys.stdout.reconfigure(encoding="utf-8")
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))  # raíz (config)
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # Mongo/ (models)
 
 import pymongo
-from faker import Faker
 
 import config
+from models import (
+    director,
+    genero,
+    pago,
+    pelicula,
+    plan,
+    reproduccion,
+    resena,
+    suscripcion,
+    usuario,
+)
 
-fake = Faker('es_CO')
+TOTALES = {
+    "generos": config.NUM_GENEROS,
+    "directores": config.NUM_DIRECTORES,
+    "planes": config.NUM_PLANES,
+    "usuarios": config.NUM_USUARIOS,
+    "peliculas": config.NUM_PELICULAS,
+    "suscripciones": config.NUM_SUSCRIPCIONES,
+    "pagos": config.NUM_PAGOS,
+    "resenas": config.NUM_RESENAS,
+    "reproducciones": config.NUM_REPRODUCCIONES,
+}
 
 
 def conectar_bd():
@@ -29,7 +50,7 @@ def insertar_en_lotes(coleccion, datos, nombre_entidad):
             progreso = min(i + config.BATCH_SIZE, total)
             print(f"  ➡️ Progreso: {progreso}/{total} ({(progreso / total) * 100:.1f}%)")
         except pymongo.errors.BulkWriteError as e:
-            insertados = e.details.get('nInserted', 0)
+            insertados = e.details.get("nInserted", 0)
             progreso = min(i + config.BATCH_SIZE, total)
             print(f"  ⚠️ Progreso: {progreso}/{total} (Se omitieron {len(lote) - insertados} duplicados)")
     print(f"  ✅ Proceso de {nombre_entidad} finalizado.\n")
@@ -43,70 +64,72 @@ def generar_datos():
     db = conectar_bd()
     inicio_total = time.time()
 
+    print("🎬 Generando catálogos (géneros, directores, planes)...")
+    insertar_en_lotes(db.generos, [genero.generar(i) for i in range(config.NUM_GENEROS)], "géneros")
+    insertar_en_lotes(db.directores, [director.generar(i) for i in range(config.NUM_DIRECTORES)], "directores")
+    insertar_en_lotes(db.planes, [plan.generar(i) for i in range(config.NUM_PLANES)], "planes")
+
     print("👤 Generando usuarios...")
-    planes = ["Básico", "Estándar", "Estándar", "Premium", "Premium"]
-    usuarios = []
-    for indice in range(config.NUM_USUARIOS):
-        usuarios.append({
-            "codigo_usuario": f"USU{indice + 1:05d}",
-            "nombre": fake.name(),
-            "email": f"usuario{indice + 1}@hyperflix.local",
-            "telefono": fake.phone_number(),
-            "direccion": {
-                "calle": fake.street_address(),
-                "ciudad": fake.city(),
-                "pais": "Colombia",
-            },
-            "fecha_registro": fake.date_time_between(start_date='-2y', end_date='now'),
-            "activo": random.choice([True, True, True, False]),
-            "plan": random.choice(planes),
-        })
-    insertar_en_lotes(db.usuarios, usuarios, "usuarios")
+    planes_bd = list(db.planes.find({}, {"codigo_plan": 1, "nombre": 1}))
+    nombres_plan = [p["nombre"] for p in planes_bd]
+    insertar_en_lotes(
+        db.usuarios,
+        [usuario.generar(i, plan=random.choice(nombres_plan)) for i in range(config.NUM_USUARIOS)],
+        "usuarios",
+    )
     usuarios_ids = [u["_id"] for u in db.usuarios.find({}, {"_id": 1})]
+    usuarios_ctx = [
+        u for u in db.usuarios.find({}, {"_id": 1, "fecha_registro": 1})
+    ]
 
     print("🎬 Generando películas...")
-    generos = ["Acción", "Comedia", "Drama", "Ciencia Ficción", "Terror", "Documental", "Romance"]
-    peliculas = []
-    for indice in range(config.NUM_PELICULAS):
-        anio = random.randint(1990, 2026)
-        peliculas.append({
-            "codigo_pelicula": f"PEL{indice + 1:05d}",
-            "titulo": f"{fake.word().capitalize()} {fake.word().capitalize()}",
-            "genero": random.choice(generos),
-            "anio": anio,
-            "duracion_min": random.randint(75, 180),
-            "director": fake.name(),
-            "fecha_estreno": fake.date_time_between(
-                start_date=f"-{2026 - anio}y", end_date='now'),
-        })
-    insertar_en_lotes(db.peliculas, peliculas, "películas")
-    peliculas_db = list(db.peliculas.find({}, {"_id": 1, "titulo": 1, "duracion_min": 1}))
+    generos_codigos = [g["codigo_genero"] for g in db.generos.find({}, {"codigo_genero": 1})]
+    directores_codigos = [d["codigo_director"] for d in db.directores.find({}, {"codigo_director": 1})]
+    insertar_en_lotes(
+        db.peliculas,
+        [pelicula.generar(i, generos_codigos, directores_codigos) for i in range(config.NUM_PELICULAS)],
+        "películas",
+    )
+    peliculas_db = list(db.peliculas.find({}, {"_id": 1, "duracion_min": 1}))
+    peliculas_ids = [p["_id"] for p in peliculas_db]
 
-    print("📺 Generando reproducciones (esto puede tomar unos minutos)...")
-    dispositivos = ["Smart TV", "Smartphone", "Tablet", "PC", "Consola"]
-    calidades = ["SD", "HD", "HD", "4K"]
-    estados = ["Completada", "Completada", "Completada", "Interrumpida", "Pendiente"]
+    print("🔐 Generando suscripciones...")
+    insertar_en_lotes(
+        db.suscripciones,
+        [suscripcion.generar(i, usuarios_ctx, planes_bd) for i in range(config.NUM_SUSCRIPCIONES)],
+        "suscripciones",
+    )
+    planes_precio = {p["codigo_plan"]: p["precio_mensual"] for p in db.planes.find({}, {"codigo_plan": 1, "precio_mensual": 1})}
+    suscripciones_ctx = [
+        {
+            "_id": s["_id"],
+            "codigo_plan": s["codigo_plan"],
+            "precio_mensual": planes_precio[s["codigo_plan"]],
+            "fecha_inicio": s["fecha_inicio"],
+        }
+        for s in db.suscripciones.find({}, {"_id": 1, "codigo_plan": 1, "fecha_inicio": 1})
+    ]
+
+    print("💳 Generando pagos...")
+    insertar_en_lotes(
+        db.pagos,
+        [pago.generar(i, suscripciones_ctx) for i in range(config.NUM_PAGOS)],
+        "pagos",
+    )
+
+    print("⭐ Generando reseñas...")
+    insertar_en_lotes(
+        db.resenas,
+        [resena.generar(i, usuarios_ids, peliculas_ids) for i in range(config.NUM_RESENAS)],
+        "reseñas",
+    )
+
+    print("📺 Generando reproducciones (esto puede tomar varios minutos)...")
     reproducciones = []
     for indice in range(config.NUM_REPRODUCCIONES):
-        pelicula = random.choice(peliculas_db)
-        duracion = pelicula["duracion_min"]
-        estado = random.choice(estados)
-        if estado == "Completada":
-            minutos = duracion
-        else:
-            minutos = random.randint(5, max(6, duracion - 1))
-        reproducciones.append({
-            "codigo_reproduccion": f"REP-2026-{indice + 1:06d}",
-            "usuario_id": random.choice(usuarios_ids),
-            "pelicula_id": pelicula["_id"],
-            "fecha_reproduccion": fake.date_time_between(start_date='-1y', end_date='now'),
-            "dispositivo": random.choice(dispositivos),
-            "calidad": random.choice(calidades),
-            "estado": estado,
-            "minutos_visualizados": minutos,
-            "progreso_pct": round(min(minutos / duracion * 100, 100), 1),
-            "valor_estimado": round(minutos * config.TARIFA_POR_MINUTO, 2),
-        })
+        reproducciones.append(
+            reproduccion.generar(indice, usuarios_ids, peliculas_db, config.TARIFA_POR_MINUTO)
+        )
         if len(reproducciones) >= config.BATCH_SIZE:
             insertar_en_lotes(db.reproducciones, reproducciones, "reproducciones (lote)")
             reproducciones = []
@@ -117,9 +140,8 @@ def generar_datos():
     print("=" * 50)
     print("🎉 ¡GENERACIÓN DE DATOS COMPLETADA!")
     print(f"⏱️  Tiempo total de ejecución: {tiempo_total:.2f} segundos")
-    print(f"👤 Usuarios en BD: {db.usuarios.count_documents({})}")
-    print(f"🎬 Películas en BD: {db.peliculas.count_documents({})}")
-    print(f"📺 Reproducciones en BD: {db.reproducciones.count_documents({})}")
+    for coleccion in config.COLECCIONES_OLTP:
+        print(f"  - {coleccion}: {db[coleccion].count_documents({})}")
     print("=" * 50)
     db.client.close()
 
