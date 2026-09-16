@@ -1,21 +1,34 @@
-# Hyperflix — MongoDB Atlas / PyMongo
+# Hyperflix — MongoDB Atlas / PyMongo + Data Lake
 
-Implementación práctica de un sistema de streaming de películas con **MongoDB Atlas + PyMongo**. Hyperflix administra usuarios, catálogo de películas, reproducciones y consultas analíticas en cinco fases.
+Implementación práctica de un sistema de streaming de películas con **MongoDB Atlas + PyMongo** e integración de un **Data Lake a gran escala** (zonas RAW/PROCESSED/CURATED en Parquet). Hyperflix administra usuarios, catálogo de películas, reproducciones, suscripciones, pagos y reseñas en cinco fases, y además construye un pipeline de Data Lake que exporta y transforma toda la información para análisis y BI.
 
 Corresponde al **PARCIAL BD PRIMER CORTE** del curso IPT (Arquitectura de Datos). Las guías y documentos base viven en `taller-conexion-mongo/` y **no se versionan** (ver `.gitignore`).
 
 ## Estructura
 
 ```
-├── Mongo/                      # Implementación real de Hyperflix
-│   ├── conexion.py             # Fase 1 — conexión a Atlas
+├── Mongo/                          # Implementación real de Hyperflix
+│   ├── conexion.py                 # Fase 1 — conexión a Atlas
+│   ├── models/                     # MODELOS/ENTIDADES normalizadas (una por archivo)
+│   │   ├── usuario.py              #   suscriptor (plan, dirección embebida)
+│   │   ├── genero.py               #   catálogo de géneros (referenciado por película)
+│   │   ├── director.py             #   catálogo de directores (referenciado por película)
+│   │   ├── pelicula.py             #   película normalizada (genero_codigo, director_codigo)
+│   │   ├── plan.py                 #   planes de suscripción (Básico/Estándar/Premium)
+│   │   ├── suscripcion.py          #   relación Usuario <-> Plan
+│   │   ├── pago.py                 #   cobros asociados a una suscripción
+│   │   ├── resena.py               #   valoración usuario -> película
+│   │   └── reproduccion.py         #   hecho transaccional (ver una película)
 │   ├── scripts/
 │   │   ├── limpiar_bd.py                  # Reinicio controlado de la base
 │   │   ├── crear_estructura.py            # Fase 2 — colecciones + índices + ejemplo
-│   │   ├── generar_datos_masivos.py       # Fase 3 — 5.000 usuarios, 1.000 películas, 50.000 reproducciones
-│   │   ├── transformar_oltp_a_olap.py     # Fase 4 — ETL → modelo analítico
-│   │   └── benchmarking_consultas.py      # Fase 5 — índices + consultas de streaming
-│   ├── data_lake/{raw,processed,curated} # Zonas del data lake (no versionado)
+│   │   ├── generar_datos_masivos.py       # Fase 3 — generación a gran escala (~170k docs)
+│   │   ├── transformar_oltp_a_olap.py     # Fase 4 — ETL → reproducciones_analiticas
+│   │   ├── data_lake_pipeline.py          # Fase 6 — pipeline RAW/PROCESSED/CURATED
+│   │   ├── benchmarking_consultas.py      # Fase 5 — índices + consultas de streaming
+│   │   ├── streaming.py                   # Fase 7 — Change Streams (escucha = Kafka Consumer)
+│   │   └── generar_reproducciones_streaming.py  # Fase 7 — genera eventos en tiempo real
+│   ├── data_lake/{raw,processed,curated}  # Zonas del data lake (no versionado)
 │   └── docs/                   # Documentación del informe
 ├── config.py                   # Constantes centralizadas (lee secretos desde el .env)
 ├── requirements.txt
@@ -23,11 +36,31 @@ Corresponde al **PARCIAL BD PRIMER CORTE** del curso IPT (Arquitectura de Datos)
 └── taller-conexion-mongo/      # Guías (contexto, NO se sube a Git)
 ```
 
+## Modelo de datos (entidades normalizadas)
+
+Cada entidad vive en su propio archivo dentro de `Mongo/models/` y expone una función `generar(...)` que construye el documento. Las películas ya **no repiten strings**: referencian `genero_codigo` y `director_codigo` a los catálogos `generos` y `directores`, los cuales se resuelven (desnormalizan a nombres) en la zona PROCESSED del data lake y en la vista OLAP.
+
+| Colección | Descripción | Relación |
+| --- | --- | --- |
+| `generos` | Catálogo de géneros | 1 a N con `peliculas.genero_codigo` |
+| `directores` | Catálogo de directores | 1 a N con `peliculas.director_codigo` |
+| `planes` | Planes de suscripción | 1 a N con `suscripciones.codigo_plan` |
+| `usuarios` | Suscriptores (con `direccion` embebida) | 1 a N con `suscripciones`/`reproducciones`/`resenas` |
+| `peliculas` | Contenido del catálogo (normalizada) | N a 1 con `generos`/`directores` |
+| `suscripciones` | Contrato Usuario ↔ Plan | N a 1 con `usuarios` y `planes` |
+| `pagos` | Cobros de una suscripción | N a 1 con `suscripciones` |
+| `resenas` | Valoraciones de películas | N a 1 con `usuarios` y `peliculas` |
+| `reproducciones` | Hecho: un usuario ve una película | N a 1 con `usuarios` y `peliculas` |
+| `reproducciones_analiticas` | Vista OLAP (modelo estrella) | generada por la Fase 4 (ETL) |
+
 ## Requisitos
 
 - **Python 3.8+** (probado con 3.12 en Windows)
 - **MongoDB Atlas** (cluster M0/M10) con credenciales de lectura/escritura
+- **Pandas + PyArrow** para la generación de Parquet (Snappy) del data lake
 - Opcional: MongoDB Compass para inspección visual
+
+Hasta 50.000 reproducciones el cluster gratuito M0 responde bien; con 100.000+ toma **varios minutos** en la fase de generación y exportación RAW.
 
 ## Configuración
 
@@ -48,7 +81,7 @@ pip install -r requirements.txt
 
 > Secreto: **solo** en `.env`. `config.py` carga `taller-conexion-mongo/.env` y expone la constante `MONGO_URI`.
 
-## Pasos de ejecución (5 fases)
+## Pasos de ejecución
 
 Correr siempre desde la raíz del proyecto, con el venv activado:
 
@@ -62,7 +95,7 @@ python Mongo/scripts/limpiar_bd.py
 # Fase 2 — Crear estructura (colecciones, índices, datos de ejemplo)
 python Mongo/scripts/crear_estructura.py
 
-# Fase 3 — Generación masiva (puede tomar unos minutos)
+# Fase 3 — Generación masiva (10k usuarios, 2k películas, 100k reproducciones, ...)
 python Mongo/scripts/generar_datos_masivos.py
 
 # Fase 4 — ETL OLTP → OLAP (modelo estrella)
@@ -70,9 +103,65 @@ python Mongo/scripts/transformar_oltp_a_olap.py
 
 # Fase 5 — Benchmarking de consultas analíticas
 python Mongo/scripts/benchmarking_consultas.py
+
+# Fase 6 — Pipeline de Data Lake (RAW → PROCESSED → CURATED, Parquet/Snappy)
+python Mongo/scripts/data_lake_pipeline.py
 ```
 
-La corrida completa deja estas colecciones: `usuarios`, `peliculas`, `reproducciones` y `reproducciones_analiticas`. La fase 4 conserva el `_id` de cada reproducción y usa `$merge` con `whenMatched: replace`, por lo que puede repetirse sin duplicar datos analíticos.
+### Fase 7 — Streaming en tiempo real (2 terminales)
+
+`streaming.py` escucha cambios en la colección `reproducciones` mediante **MongoDB Change Streams** (simula un **Kafka Consumer** + procesamiento continuo estilo Spark), y `generar_reproducciones_streaming.py` genera los eventos (insert/update/delete) tal como lo haría la aplicación web.
+
+> Requisito: Change Streams necesita un **Replica Set**. En Atlas NO está disponible en clusters gratuitos **M0/M2** (usar M10+, un Replica Set local o MongoDB vía Docker).
+
+```bash
+# TERMINAL 1 — Consumidor: escucha y procesa eventos (dejar abierta)
+python Mongo\scripts\streaming.py
+
+# TERMINAL 2 — Productor: genera ~25 reproducciones en tiempo real
+python Mongo/scripts/generar_reproducciones_streaming.py
+# (opcional) pasar el número de eventos:  python Mongo/scripts/generar_reproducciones_streaming.py 60
+```
+
+Cada evento aparece en la Terminal 1 al instante (sin reiniciar): `INSERT` (usuario inicia la reproducción, estado Pendiente), `UPDATE` (finaliza como Completada/Interrumpida con minutos y valor) y ocasionalmente `DELETE` (auditoría). Incluye una **alerta de regla de negocio** (`🚨 ALERTA`) cuando una reproducción completada supera el umbral `SEGMENTO_COMPLETO_MIN` (película larga de alto valor).
+
+| Laboratorio (este repo) | Producción |
+| --- | --- |
+| MongoDB Change Streams | Kafka |
+| Python | Spark Streaming |
+| `db.reproducciones.watch()` | Kafka Consumer |
+| `for change in stream` | Procesamiento continuo |
+| `print()` / alerta | Dashboard, alertas o Data Lake |
+
+Este flujo implementa el patrón **Change Data Capture (CDC)**: la BD notifica inserciones/actualizaciones/eliminaciones automáticamente, sin consultas constantes — el mismo fundamento de Kafka + Spark Streaming.
+
+La corrida completa deja estas colecciones en `HYPERFLIX-BD`: `generos`, `directores`, `planes`, `usuarios`, `peliculas`, `suscripciones`, `pagos`, `resenas`, `reproducciones` y `reproducciones_analiticas`. La Fase 4 conserva el `_id` de cada reproducción y usa `$merge` con `whenMatched: replace`, por lo que puede repetirse sin duplicar datos analíticos. La Fase 6 es idempotente: sobrescribe los archivos `.parquet` de cada zona.
+
+## Volúmenes de generación (a gran escala)
+
+Configurables en `config.py` (`NUM_*`):
+
+| Entidad | Cantidad |
+| --- | --- |
+| Géneros | 8 |
+| Directores | 300 |
+| Planes | 3 |
+| Usuarios | 10.000 |
+| Películas | 2.000 |
+| Suscripciones | 8.000 |
+| Pagos | 25.000 |
+| Reseñas | 20.000 |
+| Reproducciones | 100.000 |
+
+## Data Lake (Fase 6)
+
+`Mongo/scripts/data_lake_pipeline.py` construye el Data Lake adaptado del taller (Parquet + compresión Snappy):
+
+- **Zona RAW** — copia exacta de cada colección de MongoDB (`json_normalize` + `ObjectId → str`), sin modificaciones.
+- **Zona PROCESSED** — limpieza y enriquecimiento: reproducciones completadas; fechas descompuestas (`anio`, `mes`, `dia`, `trimestre`); catálogos con referencias resueltas (`película.genero`, `película.director`); usuarios con ciudad/pais y antigüedad; pagos y reseñas enriquecidos. Simula el trabajo que haría Spark.
+- **Zona CURATED** — modelo estrella listo para BI: `dim_usuario`, `dim_pelicula`, `dim_fecha`, `fact_reproduccion` + agregados `analitica_temporal`, `analitica_contenido`, `analitica_cliente`, `analitica_pagos` y `analitica_resenas`.
+
+Resultado esperado en pantalla: recuento y tamaño por zona (RAW/PROCESSED/CURATED + total).
 
 ## No se versiona (`.gitignore`)
 
