@@ -260,7 +260,7 @@ def simular_streaming_kafka():
         try:
             with db.reproducciones.watch(full_document="updateLookup") as stream:
                 while True:
-                    change = stream.try_next(250)  # espera eventos hasta 250 ms
+                    change = stream.try_next(timeout=250)  # espera eventos hasta 250 ms
                     if change is not None:
                         _procesar_change(db, change)
                     flush_tarjetas(db)
