@@ -60,7 +60,7 @@ Cada entidad vive en su propio archivo dentro de `Mongo/models/` y expone una fu
 - **Python 3.8+** (probado con 3.12 en Windows)
 - **MongoDB Atlas** (cluster M0/M10) con credenciales de lectura/escritura
 - **Pandas + PyArrow** para la generación de Parquet (Snappy) del data lake
-- **Java 11/17 (JVM)** + `JAVA_HOME` para Apache Spark (PySpark): `winget install EclipseAdoptium.Temurin.17.JDK`
+- **Java 11/17/21 (JVM) + `JAVA_HOME`** para Apache Spark (PySpark): `winget install EclipseAdoptium.Temurin.21.JDK`
 - Opcional: MongoDB Compass para inspección visual
 
 Hasta 50.000 reproducciones el cluster gratuito M0 responde bien; con 100.000+ toma **varios minutos** en la fase de generación y exportación RAW.
@@ -153,21 +153,24 @@ Este flujo implementa el patrón **Change Data Capture (CDC)**: la BD notifica i
 2. **Segmentación de clientes** — "¿Qué tipo de clientes tenemos?" (join fact ↔ usuario, métricas por cliente y clasificación con `F.when` → VIP/Premium/Frecuente/Regular).
 3. **Evolución mensual** — "¿Cómo evoluciona el consumo por mes?" (`to_date` + `year`/`month` + `groupBy("anio","mes")` → tendencias para dashboards).
 
-> Requisito previo: **Java instalado** (PySpark corre sobre la JVM; `pip install pyspark` no basta). Si falta, el script avisa y corta.
+> Requisito previo: **Java instalado** (PySpark corre sobre la JVM; `pip install pyspark` no basta). Si falta, el script avisa y corta. Funcionan **Java 11, 17 o 21**.
 
-**Preparar Java en Windows** (una sola vez):
+**Preparar Java en Windows** (una sola vez; requiere permisos de administrador):
 
 ```powershell
-# 1. Instalar OpenJDK 17 (Adoptium/Temurin)
-winget install EclipseAdoptium.Temurin.17.JDK
+# 1. Instalar un JDK (OpenJDK 21 — Adoptium/Temurin)
+winget install EclipseAdoptium.Temurin.21.JDK
 
-# 2. Definir JAVA_HOME (ajusta la ruta a tu versión instalada) y reiniciar la terminal
-$env:JAVA_HOME = "C:\Program Files\Eclipse Adoptium\jdk-17.0.15.6-hotspot"
-[Environment]::SetEnvironmentVariable("JAVA_HOME", $env:JAVA_HOME, "User")
-[Environment]::SetEnvironmentVariable("Path", $env:Path + ";%JAVA_HOME%\bin", "User")
+# 2. Definir JAVA_HOME y agregar \bin al PATH — a nivel SISTEMA (todas las máquinas/usuarios)
+#    La ruta exacta depende de lo instalado; en este equipo quedó:
+#    C:\Program Files\Java\jdk-21.0.12.1
+[Environment]::SetEnvironmentVariable("JAVA_HOME", "C:\Program Files\Java\jdk-21.0.12.1", "Machine")
+[Environment]::SetEnvironmentVariable("Path",
+  [Environment]::GetEnvironmentVariable("Path","Machine") + ";C:\Program Files\Java\jdk-21.0.12.1\bin",
+  "Machine")
 ```
 
-> La versión real de la carpeta puede verse con `Get-ChildItem "C:\Program Files\Eclipse Adoptium"`. Es necesario haber corrido la **Fase 6** (zona CURATED) antes.
+> Está configurado a nivel `Machine` (todos los usuarios). Verifica la ruta con `Get-ChildItem "C:\Program Files\Java"`, y recuerda **abrir una terminal nueva** para que tome las variables. Es necesario haber corrido la **Fase 6** (zona CURATED) antes.
 
 ```bash
 # Fase 8 — Ejecuta los 3 Spark Jobs sobre el data lake (curated/spark)
