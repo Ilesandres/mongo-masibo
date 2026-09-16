@@ -259,11 +259,12 @@ def simular_streaming_kafka():
 
         try:
             with db.reproducciones.watch(full_document="updateLookup") as stream:
-                while True:
-                    change = stream.try_next(timeout=250)  # espera eventos hasta 250 ms
+                while stream.alive:
+                    change = stream.try_next()
                     if change is not None:
                         _procesar_change(db, change)
                     flush_tarjetas(db)
+                    time.sleep(0.1)
         except OperationFailure as e:
             print(f"   ({e})")
             _modo_fallback_polling(client, db)
