@@ -40,6 +40,7 @@ TARIFA_POR_MINUTO = 1000
 MARGEN_GANANCIA = 0.15
 SEGMENTO_COMPLETO_MIN = 90_000
 SEGMENTO_PARCIAL_MIN = 30_000
+MINUTOS_MARATON = 120  # alerta en streaming: película larga completada en una sola sesión
 
 # ── Data Lake ──────────────────────────────────────────────
 DATA_LAKE_ROOT = Path(__file__).resolve().parent / "Mongo" / "data_lake"

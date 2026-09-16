@@ -65,7 +65,7 @@ def generar_reproducciones(numero_eventos=25):
             "valor_estimado": 0,
         }
         db.reproducciones.insert_one(documento)
-        print(f"📤 [INSERT] {codigo} | {pelicula['titulo']} | Pendiente")
+        print(f"📤 [INSERT] {codigo} | {pelicula['titulo']} | Pendiente | {documento['dispositivo']} | {documento['calidad']}")
         time.sleep(0.8)
 
         # 2) Con poca probabilidad: DELETE (auditoría), en caso contrario: UPDATE
@@ -78,17 +78,23 @@ def generar_reproducciones(numero_eventos=25):
                 minutos = pelicula["duracion_min"]
             else:
                 minutos = random.randint(5, max(6, pelicula["duracion_min"] - 1))
+            progreso = round(min(minutos / pelicula["duracion_min"] * 100, 100), 1)
             valor = round(minutos * config.TARIFA_POR_MINUTO, 2)
             db.reproducciones.update_one(
                 {"codigo_reproduccion": codigo},
                 {"$set": {
                     "estado": estado_final,
                     "minutos_visualizados": minutos,
-                    "progreso_pct": round(min(minutos / pelicula["duracion_min"] * 100, 100), 1),
+                    "progreso_pct": progreso,
                     "valor_estimado": valor,
                 }},
             )
-            print(f"🔄 [UPDATE] {codigo} | {pelicula['titulo']} | -> {estado_final} | {minutos} min | 💰 ${valor:,.0f}")
+            print(
+                f"🔄 [UPDATE] {codigo} | {pelicula['titulo']} | "
+                f"-> {estado_final} | {minutos} min ({progreso:.0f}%) | {documento['dispositivo']} | {documento['calidad']}"
+            )
+            if estado_final == "Completada" and pelicula["duracion_min"] >= config.MINUTOS_MARATON:
+                print(f"   🚨 Maratón: '{pelicula['titulo']}' completada en una sola sesión (≥ {config.MINUTOS_MARATON} min)")
 
         time.sleep(1.2)
 
