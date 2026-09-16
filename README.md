@@ -123,7 +123,7 @@ python Mongo/scripts/generar_reproducciones_streaming.py
 # (opcional) pasar el número de eventos:  python Mongo/scripts/generar_reproducciones_streaming.py 60
 ```
 
-Cada evento aparece en la Terminal 1 al instante (sin reiniciar): `INSERT` (usuario inicia la reproducción, estado Pendiente), `UPDATE` (finaliza como Completada/Interrumpida con minutos, % de progreso, dispositivo y calidad) y ocasionalmente `DELETE` (auditoría). Incluye una **alerta de regla de negocio** (`🚨 ALERTA`) apuntada al dominio de streaming: una reproducción **completada** de una **película larga** (≥ `MINUTOS_MARATON` = 120 min) en una sola sesión = **maratón**.
+Cada evento llega a la Terminal 1 en tiempo real (sin reiniciar). Ahí se agrupa el ciclo de vida de cada reproducción (`INSERT` Pendiente → `UPDATE` Completada/Interrumpida; ocasionalmente `DELETE` de auditoría) en una **tarjeta** con la película, el usuario, el dispositivo/calidad, el estado, los minutos y una **barra de progreso**. Incluye una **alerta de regla de negocio** (`🚨 MARATÓN`) cuando una reproducción **completada** es de una **película larga** (≥ `MINUTOS_MARATON` = 120 min) vista en una sola sesión. Al cerrar (Ctrl+C) imprime un **resumen de la sesión** (procesadas, completadas, interrumpidas, eliminadas y maratones).
 
 | Laboratorio (este repo) | Producción |
 | --- | --- |
