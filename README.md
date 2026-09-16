@@ -109,6 +109,13 @@ python Mongo/scripts/benchmarking_consultas.py
 
 # Fase 6 — Pipeline de Data Lake (RAW → PROCESSED → CURATED, Parquet/Snappy)
 python Mongo/scripts/data_lake_pipeline.py
+
+# Fase 7 — Streaming en tiempo real (ver sección abajo: 2 terminales)
+python Mongo/scripts/streaming.py                            # Terminal 1 (escucha)
+python Mongo/scripts/generar_reproducciones_streaming.py     # Terminal 2 (genera eventos)
+
+# Fase 8 — Spark Jobs: Apache Spark procesa CURATED y genera tablas para BI
+python Mongo/scripts/spark_jobs.py
 ```
 
 ### Fase 7 — Streaming en tiempo real (2 terminales)
