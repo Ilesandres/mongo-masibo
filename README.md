@@ -25,7 +25,7 @@ Corresponde al **PARCIAL BD PRIMER CORTE** del curso IPT (Arquitectura de Datos)
 │   │   ├── generar_datos_masivos.py       # Fase 3 — generación a gran escala (~170k docs)
 │   │   ├── transformar_oltp_a_olap.py     # Fase 4 — ETL → reproducciones_analiticas
 │   │   ├── data_lake_pipeline.py          # Fase 6 — pipeline RAW/PROCESSED/CURATED
-│   │   ├── benchmarking_consultas.py      # Fase 5 — índices + consultas de streaming
+│   │   ├── benchmarking_consultas.py      # Fase 5 — índices + 10 consultas OLAP
 │   │   ├── streaming.py                   # Fase 7 — Change Streams (escucha = Kafka Consumer)
 │   │   ├── generar_reproducciones_streaming.py  # Fase 7 — genera eventos en tiempo real
 │   │   ├── spark_jobs.py                  # Fase 8 — 3 Spark Jobs (PySpark) → BI
@@ -105,7 +105,7 @@ python Mongo/scripts/generar_datos_masivos.py
 # Fase 4 — ETL OLTP → OLAP (modelo estrella)
 python Mongo/scripts/transformar_oltp_a_olap.py
 
-# Fase 5 — Benchmarking de consultas analíticas
+# Fase 5 — Benchmarking de 10 consultas analíticas optimizadas (ver sección abajo)
 python Mongo/scripts/benchmarking_consultas.py
 
 # Fase 6 — Pipeline de Data Lake (RAW → PROCESSED → CURATED, Parquet/Snappy)
@@ -122,6 +122,22 @@ python Mongo/scripts/spark_jobs.py
 #          dim_pelicula y fact_consumo a partir de reproducciones_analiticas
 python Mongo/scripts/data_warehouse.py
 ```
+### Fase 5 — Benchmarking de 10 consultas analíticas
+
+`benchmarking_consultas.py` crea los **índices compuestos selectivos** (Fase 1) y mide la **latencia** de **10 consultas analíticas OLAP** (Fase 2) sobre `reproducciones_analiticas`, todas con `allowDiskUse=True` (usa disco temporal si la agregación supera la RAM):
+
+1. Reproducciones y minutos totales **mensuales** (serie de tiempo).
+2. **Top 5 películas por género** (ranking de catálogo).
+3. Rendimiento por **segmento y ciudad** (Completadas; nota: devuelve ~2.000 filas → mayor latencia; lección de clase: en OLAP no solo importa el índice, también el volumen de filas devueltas — un `$limit` lo resolvería).
+4. **Valor promedio por dispositivo** (ticket medio del streaming).
+5. Reproducciones por **día de la semana** (estacionalidad semanal, `$dayOfWeek`).
+6. **Tasa de abandono (Interrumpida)** por dispositivo (`$cond` dentro de `$sum`).
+7. **Top 10 clientes VIP** por gasto acumulado (segmento "Completo" + `$limit 10`).
+8. Reproducciones **trimestrales** (estacionalidad Q1-Q4, `$ceil` + `$divide`).
+9. **Ticket promedio por ciudad y segmento** (Top 15; resuelto por Index Scan con `idx_estado_segmento_ciudad`).
+10. **Top 10 películas con mayor rotación** (reproducciones Completadas + `$limit 10`).
+
+Al final imprime el resumen (latencia promedio/máxima e SLA): si el promedio queda **< 500 ms** la conclusión es `RENDIMIENTO ÓPTIMO`. Corrido sobre la BD real (100.000 reproducciones OLAP): promedio **~410 ms**. Los índices usados se centralizan en `config.INDEXES_OLAP` (`idx_fecha`, `idx_genero_valor`, `idx_segmento_ciudad`, `idx_estado_segmento_ciudad`, `idx_dispositivo_estado`).
 
 ### Fase 7 — Streaming en tiempo real (2 terminales)
 
