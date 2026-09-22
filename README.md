@@ -28,7 +28,8 @@ Corresponde al **PARCIAL BD PRIMER CORTE** del curso IPT (Arquitectura de Datos)
 │   │   ├── benchmarking_consultas.py      # Fase 5 — índices + consultas de streaming
 │   │   ├── streaming.py                   # Fase 7 — Change Streams (escucha = Kafka Consumer)
 │   │   ├── generar_reproducciones_streaming.py  # Fase 7 — genera eventos en tiempo real
-│   │   └── spark_jobs.py                  # Fase 8 — 3 Spark Jobs (PySpark) → BI
+│   │   ├── spark_jobs.py                  # Fase 8 — 3 Spark Jobs (PySpark) → BI
+│   │   └── data_warehouse.py              # Fase 9 — Star Schema en MongoDB (dim + fact)
 │   ├── data_lake/{raw,processed,curated}  # Zonas del data lake (no versionado)
 │   │   └── curated/spark/                 # Resultados de los Spark Jobs (listos para BI)
 │   └── docs/                   # Documentación del informe
@@ -116,6 +117,10 @@ python Mongo/scripts/generar_reproducciones_streaming.py     # Terminal 2 (gener
 
 # Fase 8 — Spark Jobs: Apache Spark procesa CURATED y genera tablas para BI
 python Mongo/scripts/spark_jobs.py
+
+# Fase 9 — Data Warehouse (Modelo Estrella) en MongoDB: dim_tiempo, dim_cliente,
+#          dim_pelicula y fact_consumo a partir de reproducciones_analiticas
+python Mongo/scripts/data_warehouse.py
 ```
 
 ### Fase 7 — Streaming en tiempo real (2 terminales)
@@ -179,7 +184,43 @@ python Mongo/scripts/spark_jobs.py
 
 Idea clave: **Pandas prepara los datos** (Fase 6, limpieza/enriquecimiento) y **Spark los procesa de forma distribuida** (Fase 8). El mismo código con `local[*]` (todos los núcleos del equipo) escala casi sin cambios a un clúster de varios nodos.
 
-La corrida completa deja estas colecciones en `HYPERFLIX-BD`: `generos`, `directores`, `planes`, `usuarios`, `peliculas`, `suscripciones`, `pagos`, `resenas`, `reproducciones` y `reproducciones_analiticas`. La Fase 4 conserva el `_id` de cada reproducción y usa `$merge` con `whenMatched: replace`, por lo que puede repetirse sin duplicar datos analíticos. La Fase 6 es idempotente: sobrescribe los archivos `.parquet` de cada zona.
+### Fase 9 — Data Warehouse con Modelo Estrella (en MongoDB)
+
+`data_warehouse.py` adapta al dominio de streaming el taller de la **Fase 3 del curso** (modelos dimensionales): aunque MongoDB es NoSQL, el script construye un **Star Schema** con Aggregation Pipelines sobre la vista OLAP `reproducciones_analiticas`, generando 4 colecciones analíticas listas para BI (MongoDB Compass Charts, Atlas SQL, Power BI):
+
+```
+                    reproducciones_analiticas
+                      (Fuente OLAP enriquecida)
+                  /        |         |         \
+          dim_tiempo  dim_cliente  dim_pelicula  fact_consumo
+        (Fecha,mes,   (Perfil de   (Catálogo y   (Medidas puras:
+         año,trimestre, cliente:     director/    solo claves + 
+         fin de semana) $first,$sum,$avg) género) minutos y valor)
+                  \        |         |         /
+                        Consultas BI
+                  (Dashboards, SQL, Analytics)
+```
+
+Etapas que ejecuta sobre la colección fuente:
+
+```
+
+<｜DSML｜tool_calls>
+<｜DSML｜invoke name="edit">
+<｜DSML｜parameter name="filePath" string="true">C:\Users\Ilesa\Documents\IPT\almacenamietoincorporados (corrigiendo la guía original):
+
+- **`dim_tiempo`** agrupa por `(anio, mes, dia)` y reconstruye la fecha con `$dateFromParts`; calcula `trimestre` con `{"$ceil": {"$divide": ["$mes", 3]}}` y `fin_semana` con el operador correcto **`$dayOfWeek`** (la guía comparaba `dia==1 || dia==7` sobre el día del mes, lo cual no detecta fines de semana reales).
+- **`dim_cliente`** usa `$first` (perfil no duplicado), `$sum` (minutos/gasto totales por suscriptor) y `$avg` + `$round` (valor promedio por reproducción).
+- **`dim_pelicula`** agrupa por película con catálogo completo: `$first` de título/género/director + totales de reproducciones, minutos e ingresos.
+- **`fact_consumo`** es la tabla de hechos: solo **claves** (`cliente_id`, `pelicula_id`, `fecha_id` por día) y **medidas** (`minutos_visualizados`, `valor_estimado`, `ganancia_estimada`), más contexto ligero de `estado`/`dispositivo`/`calidad`. Reduce duplicación frente a la vista OLAP.
+- Los 4 pipelines cierran con **`$merge`** (equivalente a un `INSERT INTO ... ON DUPLICATE KEY`): si el documento existe lo reemplaza, si no, lo inserta — el script es idempotente. `allowDiskUse=True` evita fallos de memoria en volúmenes Big Data.
+
+```bash
+# Fase 9 — Construye el Data Warehouse (dim_tiempo, dim_cliente, dim_pelicula, fact_consumo)
+python Mongo/scripts/data_warehouse.py
+```
+
+La corrida completa deja estas colecciones en `HYPERFLIX-BD`: `generos`, `directores`, `planes`, `usuarios`, `peliculas`, `suscripciones`, `pagos`, `resenas`, `reproducciones`, `reproducciones_analiticas` y las 4 del Data Warehouse (`dim_*` y `fact_consumo`). La Fase 4 conserva el `_id` de cada reproducción y usa `$merge` con `whenMatched: replace`, por lo que puede repetirse sin duplicar datos analíticos. La Fase 6 es idempotente: sobrescribe los archivos `.parquet` de cada zona.
 
 ## Volúmenes de generación (a gran escala)
 
