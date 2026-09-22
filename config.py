@@ -93,4 +93,5 @@ INDEXES_OLAP = [
     ("idx_genero_valor", [("pelicula.genero", 1), ("valor_estimado", -1)]),
     ("idx_segmento_ciudad", [("usuario.segmento", 1), ("usuario.ciudad", 1)]),
     ("idx_estado_segmento_ciudad", [("estado", 1), ("usuario.segmento", 1), ("usuario.ciudad", 1)]),
+    ("idx_dispositivo_estado", [("dispositivo", 1), ("estado", 1)]),
 ]
