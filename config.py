@@ -23,6 +23,9 @@ COLECCIONES_OLTP = [
 COLECCION_OLAP = "reproducciones_analiticas"
 COLECCIONES_DATALAKE = COLECCIONES_OLTP + [COLECCION_OLAP]
 
+# Data Warehouse (modelo estrella en MongoDB, Fase 9)
+COLECCIONES_DW = ["dim_tiempo", "dim_cliente", "dim_pelicula", "fact_consumo"]
+
 # ── Volúmenes de generación masiva (a gran escala) ─────────
 NUM_GENEROS = 8
 NUM_DIRECTORES = 300
