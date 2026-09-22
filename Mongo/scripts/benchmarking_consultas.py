@@ -15,7 +15,7 @@ def ejecutar_benchmark():
     if not config.MONGO_URI:
         raise RuntimeError("No se encontró MONGO_URI en el archivo .env configurado.")
 
-    print("🚀 Iniciando Benchmarking de Consultas Analíticas (Hyperflix)...\n")
+    print("🚀 Iniciando Benchmarking de 10 Consultas Analíticas Optimizadas (Hyperflix)...\n")
     client = pymongo.MongoClient(config.MONGO_URI)
     db = client[config.DB_NAME]
     coleccion = db[config.COLECCION_OLAP]
@@ -77,6 +77,79 @@ def ejecutar_benchmark():
                 {"$sort": {"_id": 1}},
             ],
         },
+        {
+            "nombre": "6. Tasa de Abandono (Interrumpida) por Dispositivo",
+            "pipeline": [
+                {"$match": {"estado": {"$in": ["Completada", "Interrumpida"]}}},
+                {"$group": {"_id": "$dispositivo",
+                            "abandonadas": {"$sum": {"$cond": [
+                                {"$eq": ["$estado", "Interrumpida"]}, 1, 0]}},
+                            "totales": {"$sum": 1}}},
+                {"$project": {"_id": 0,
+                              "dispositivo": "$_id",
+                              "abandonadas": 1,
+                              "totales": 1,
+                              "tasa_abandono_pct": {"$round": [
+                                  {"$multiply": [{"$divide": ["$abandonadas", "$totales"]}, 100]}, 2]}}},
+                {"$sort": {"tasa_abandono_pct": -1}},
+            ],
+        },
+        {
+            "nombre": "7. Top 10 Clientes VIP por Gasto Acumulado",
+            "pipeline": [
+                {"$match": {"usuario.segmento": "Completo"}},
+                {"$group": {"_id": "$usuario.id",
+                            "nombre": {"$first": "$usuario.nombre"},
+                            "compras": {"$sum": 1},
+                            "gasto_total": {"$sum": "$valor_estimado"}}},
+                {"$sort": {"gasto_total": -1}},
+                {"$limit": 10},
+                {"$project": {"_id": 0, "cliente_id": {"$toString": "$_id"},
+                              "nombre": 1, "compras": 1, "gasto_total": 1}},
+            ],
+        },
+        {
+            "nombre": "8. Reproducciones Trimestrales (Análisis Estacional Q1-Q4)",
+            "pipeline": [
+                {"$group": {"_id": {"anio": "$anio",
+                                    "trimestre": {"$ceil": {"$divide": ["$mes", 3]}}},
+                            "ingresos": {"$sum": "$valor_estimado"},
+                            "reproducciones": {"$sum": 1}}},
+                {"$sort": {"_id.anio": 1, "_id.trimestre": 1}},
+                {"$project": {"_id": 0,
+                              "anio": "$_id.anio",
+                              "trimestre": {"$concat": ["Q", {"$toString": "$_id.trimestre"}]},
+                              "ingresos": 1, "reproducciones": 1}},
+            ],
+        },
+        {
+            "nombre": "9. Ticket Promedio por Ciudad y Segmento (Top 15)",
+            "pipeline": [
+                {"$match": {"estado": "Completada"}},
+                {"$group": {"_id": {"ciudad": "$usuario.ciudad", "segmento": "$usuario.segmento"},
+                            "ticket_promedio": {"$avg": "$valor_estimado"},
+                            "transacciones": {"$sum": 1}}},
+                {"$sort": {"ticket_promedio": -1, "_id.segmento": 1}},
+                {"$limit": 15},
+                {"$project": {"_id": 0, "ciudad": "$_id.ciudad", "segmento": "$_id.segmento",
+                              "ticket_promedio": {"$round": ["$ticket_promedio", 2]},
+                              "transacciones": 1}},
+            ],
+        },
+        {
+            "nombre": "10. Top 10 Películas con Mayor Rotación (Reproducciones)",
+            "pipeline": [
+                {"$match": {"estado": "Completada"}},
+                {"$group": {"_id": "$pelicula.id",
+                            "titulo": {"$first": "$pelicula.titulo"},
+                            "reproducciones": {"$sum": 1},
+                            "ingresos_generados": {"$sum": "$valor_estimado"}}},
+                {"$sort": {"reproducciones": -1}},
+                {"$limit": 10},
+                {"$project": {"_id": 0, "pelicula": "$titulo",
+                              "reproducciones": 1, "ingresos_generados": 1}},
+            ],
+        },
     ]
 
     print("⚙️ Fase 2: Ejecutando consultas...\n")
@@ -97,12 +170,22 @@ def ejecutar_benchmark():
 
     promedio_latencia = sum(tiempos_totales) / len(tiempos_totales)
     print("\n" + "=" * 70)
-    print("📊 RESUMEN DE BENCHMARKING")
+    print("📊 RESUMEN DE BENCHMARKING DE RENDIMIENTO (10 CONSULTAS)")
     print("=" * 70)
-    print(f"📈 Consultas ejecutadas: {len(consultas)}")
+    print(f"✅ Consultas ejecutadas: {len(consultas)}")
     print(f"⏱️  Latencia promedio: {promedio_latencia:.2f} ms")
     print(f"🚀 Latencia máxima: {max(tiempos_totales):.2f} ms")
-    print(f"💾 Registros procesados: {coleccion.count_documents({})}")
+    print(f"📊 Registros analíticos procesados: {coleccion.count_documents({})}")
+    sla_ms = 500
+    if promedio_latencia <= sla_ms:
+        print("=" * 70)
+        print(f"✅ CONCLUSIÓN: RENDIMIENTO ÓPTIMO. Índices compuestos + allowDiskUse"
+              f" garantizan latencia < {sla_ms} ms (SLA OLAP).")
+    else:
+        print("=" * 70)
+        print(f"⚠️  Latencia promedio supera los {sla_ms} ms.")
+        print("    Lección: en OLAP, la latencia no solo depende del índice, sino del")
+        print("    VOLUMEN de filas devuelto al cliente (usa $limit / filas agregadas).")
     print("=" * 70)
     client.close()
 
