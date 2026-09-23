@@ -29,9 +29,11 @@ Corresponde al **PARCIAL BD PRIMER CORTE** del curso IPT (Arquitectura de Datos)
 │   │   ├── streaming.py                   # Fase 7 — Change Streams (escucha = Kafka Consumer)
 │   │   ├── generar_reproducciones_streaming.py  # Fase 7 — genera eventos en tiempo real
 │   │   ├── spark_jobs.py                  # Fase 8 — 3 Spark Jobs (PySpark) → BI
-│   │   └── data_warehouse.py              # Fase 9 — Star Schema en MongoDB (dim + fact)
+│   │   ├── data_warehouse.py              # Fase 9 — Star Schema en MongoDB (dim + fact)
+│   │   └── dashboard_monitoreo.py         # Dashboard — 6 paneles de monitoreo (PNG)
 │   ├── data_lake/{raw,processed,curated}  # Zonas del data lake (no versionado)
 │   │   └── curated/spark/                 # Resultados de los Spark Jobs (listos para BI)
+│   ├── dashboards/                        # PNG generados por el dashboard (no versionado)
 │   └── docs/                   # Documentación del informe
 ├── config.py                   # Constantes centralizadas (lee secretos desde el .env)
 ├── requirements.txt
@@ -61,6 +63,7 @@ Cada entidad vive en su propio archivo dentro de `Mongo/models/` y expone una fu
 - **Python 3.8+** (probado con 3.12 en Windows)
 - **MongoDB Atlas** (cluster M0/M10) con credenciales de lectura/escritura
 - **Pandas + PyArrow** para la generación de Parquet (Snappy) del data lake
+- **Matplotlib + Plotly** para el dashboard de monitoreo (PNG de 6 paneles)
 - **Java 11/17/21 (JVM) + `JAVA_HOME`** para Apache Spark (PySpark): `winget install EclipseAdoptium.Temurin.21.JDK`
 - Opcional: MongoDB Compass para inspección visual
 
@@ -121,6 +124,10 @@ python Mongo/scripts/spark_jobs.py
 # Fase 9 — Data Warehouse (Modelo Estrella) en MongoDB: dim_tiempo, dim_cliente,
 #          dim_pelicula y fact_consumo a partir de reproducciones_analiticas
 python Mongo/scripts/data_warehouse.py
+
+# Dashboard de Monitoreo — genera PNG con 6 paneles (documentos, rendimiento,
+#                          costos, tendencia mensual, almacenamiento y resumen)
+python Mongo/scripts/dashboard_monitoreo.py
 ```
 ### Fase 5 — Benchmarking de 10 consultas analíticas
 
@@ -217,13 +224,7 @@ Idea clave: **Pandas prepara los datos** (Fase 6, limpieza/enriquecimiento) y **
                   (Dashboards, SQL, Analytics)
 ```
 
-Etapas que ejecuta sobre la colección fuente:
-
-```
-
-<｜DSML｜tool_calls>
-<｜DSML｜invoke name="edit">
-<｜DSML｜parameter name="filePath" string="true">C:\Users\Ilesa\Documents\IPT\almacenamietoincorporados (corrigiendo la guía original):
+Etapas que ejecuta sobre la colección fuente (corrigiendo la guía original):
 
 - **`dim_tiempo`** agrupa por `(anio, mes, dia)` y reconstruye la fecha con `$dateFromParts`; calcula `trimestre` con `{"$ceil": {"$divide": ["$mes", 3]}}` y `fin_semana` con el operador correcto **`$dayOfWeek`** (la guía comparaba `dia==1 || dia==7` sobre el día del mes, lo cual no detecta fines de semana reales).
 - **`dim_cliente`** usa `$first` (perfil no duplicado), `$sum` (minutos/gasto totales por suscriptor) y `$avg` + `$round` (valor promedio por reproducción).
@@ -237,6 +238,23 @@ python Mongo/scripts/data_warehouse.py
 ```
 
 La corrida completa deja estas colecciones en `HYPERFLIX-BD`: `generos`, `directores`, `planes`, `usuarios`, `peliculas`, `suscripciones`, `pagos`, `resenas`, `reproducciones`, `reproducciones_analiticas` y las 4 del Data Warehouse (`dim_*` y `fact_consumo`). La Fase 4 conserva el `_id` de cada reproducción y usa `$merge` con `whenMatched: replace`, por lo que puede repetirse sin duplicar datos analíticos. La Fase 6 es idempotente: sobrescribe los archivos `.parquet` de cada zona.
+
+### Dashboard de Monitoreo (6 paneles)
+
+`dashboard_monitoreo.py` genera un **PNG** con un tablero de arquitectura de datos (adaptado de `dashboard.md`), imprime el resumen de `ESTADÍSTICAS DEL DASHBOARD` y deja el archivo en `Mongo/dashboards/dashboard_monitoreo_AÑOmesdía_HoraMinSeg.png` (carpeta no versionada):
+
+```bash
+python Mongo/scripts/dashboard_monitoreo.py
+```
+
+1. **Documentos por Colección** — barras con el conteo de las 15 colecciones (OLTP + `reproducciones_analiticas` + las 4 del DW).
+2. **Rendimiento de Consultas** — latencia de 3 consultas OLAP representativas (mensual, dispositivo, trimestral) contra la línea punteada verde **"Óptimo (< 500 ms)"** (`config.SLA_MS`).
+3. **Estimación de Costos Mensuales** — dona con Base (M10) + Almacenamiento + Operaciones (constantes `COSTO_BASE_ATLAS_MES`, `PRECIO_GB_MENSUAL`, `PRECIO_OPERACIONES_MES`).
+4. **Tendencia de Consumo Mensual** — línea de ingresos estimados (COP) mes a mes desde la vista OLAP.
+5. **Métricas de Almacenamiento** — total documentos / GB / meses con datos normalizados a 0–100%.
+6. **Resumen Ejecutivo** — cuadro tipo consola con total documentos, almacenamiento, latencia promedio, costo estimado y estado **OPERATIVO**.
+
+Requiere `matplotlib` y `plotly` (ver `requirements.txt`). En la BD real: **377.706 documentos, ~0,11 GB, promedio ~200 ms, ~$57/mes y 13 meses con datos**, generado en ~6 s.
 
 ## Volúmenes de generación (a gran escala)
 
