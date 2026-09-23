@@ -148,6 +148,7 @@ def construir_dashboard(info, resultados, consultas, total_docs, almacenamiento_
     # 6. Resumen ejecutivo
     ax = ejes[1, 2]
     ax.axis("off")
+    ax.set_facecolor("#111111")
     estado = "OPERATIVO"
     resumen = (
         "RESUMEN EJECUTIVO DEL SISTEMA\n"
@@ -161,8 +162,8 @@ def construir_dashboard(info, resultados, consultas, total_docs, almacenamiento_
         f"Meses con Datos    : {meses_con_datos}"
     )
     ax.text(0.5, 0.5, resumen, transform=ax.transAxes, ha="center", va="center",
-            fontfamily="monospace", fontsize=13,
-            bbox=dict(boxstyle="round", facecolor="black", edgecolor="#2ca02c"))
+            fontfamily="monospace", fontsize=14, linespacing=1.4, color="white",
+            bbox=dict(boxstyle="round,pad=0.9", facecolor="black", edgecolor="#2ca02c", linewidth=2))
 
     fig.tight_layout(rect=(0, 0, 1, 0.95))
     return fig
