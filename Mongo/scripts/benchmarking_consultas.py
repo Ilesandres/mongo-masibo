@@ -48,13 +48,20 @@ def ejecutar_benchmark():
             ],
         },
         {
-            "nombre": "3. Rendimiento por Segmento y Ciudad",
+            "nombre": "3. Rendimiento por Segmento y Ciudad (Top 10)",
             "pipeline": [
                 {"$match": {"estado": "Completada"}},
                 {"$group": {"_id": {"segmento": "$usuario.segmento", "ciudad": "$usuario.ciudad"},
                             "ingresos": {"$sum": "$valor_estimado"},
                             "ganancia_estimada": {"$sum": "$ganancia_estimada"}}},
                 {"$sort": {"ingresos": -1}},
+                {"$limit": 10},
+                {"$project": {
+                    "_id": 0,
+                    "segmento": "$_id.segmento",
+                    "ciudad": "$_id.ciudad",
+                    "ingresos": 1,
+                    "ganancia_estimada": 1}},
             ],
         },
         {
