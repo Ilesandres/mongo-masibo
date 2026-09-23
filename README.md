@@ -135,7 +135,7 @@ python Mongo/scripts/dashboard_monitoreo.py
 
 1. Reproducciones y minutos totales **mensuales** (serie de tiempo).
 2. **Top 5 películas por género** (ranking de catálogo).
-3. Rendimiento por **segmento y ciudad** (Completadas; nota: devuelve ~2.000 filas → mayor latencia; lección de clase: en OLAP no solo importa el índice, también el volumen de filas devueltas — un `$limit` lo resolvería).
+3. Rendimiento por **segmento y ciudad** (Top 10 de Completadas; lección de clase: un `$limit` evita transferir miles de filas — pasó de ~1.650 ms con 2.065 filas a ~410 ms con 10).
 4. **Valor promedio por dispositivo** (ticket medio del streaming).
 5. Reproducciones por **día de la semana** (estacionalidad semanal, `$dayOfWeek`).
 6. **Tasa de abandono (Interrumpida)** por dispositivo (`$cond` dentro de `$sum`).
@@ -144,7 +144,7 @@ python Mongo/scripts/dashboard_monitoreo.py
 9. **Ticket promedio por ciudad y segmento** (Top 15; resuelto por Index Scan con `idx_estado_segmento_ciudad`).
 10. **Top 10 películas con mayor rotación** (reproducciones Completadas + `$limit 10`).
 
-Al final imprime el resumen (latencia promedio/máxima e SLA): si el promedio queda **< 500 ms** la conclusión es `RENDIMIENTO ÓPTIMO`. Corrido sobre la BD real (100.000 reproducciones OLAP): promedio **~410 ms**. Los índices usados se centralizan en `config.INDEXES_OLAP` (`idx_fecha`, `idx_genero_valor`, `idx_segmento_ciudad`, `idx_estado_segmento_ciudad`, `idx_dispositivo_estado`).
+Al final imprime el resumen (latencia promedio/máxima e SLA): si el promedio queda **< 500 ms** la conclusión es `RENDIMIENTO ÓPTIMO`. Corrido sobre la BD real (100.000 reproducciones OLAP): promedio **~340 ms**, máximo ~423 ms — **todas las consultas < 500 ms**. Los índices usados se centralizan en `config.INDEXES_OLAP` (`idx_fecha`, `idx_genero_valor`, `idx_segmento_ciudad`, `idx_estado_segmento_ciudad`, `idx_dispositivo_estado`).
 
 ### Fase 7 — Streaming en tiempo real (2 terminales)
 
