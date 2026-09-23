@@ -87,60 +87,69 @@ def tendencia_mensual(db):
 
 def construir_dashboard(info, resultados, consultas, total_docs, almacenamiento_gb,
                         costo_mensual, partes_costo, meses_con_datos, serie_mensual):
-    fig, ejes = plt.subplots(2, 3, figsize=(18, 11))
+    plt.rcParams.update({
+        "font.family": "DejaVu Sans",
+        "font.size": 7,
+        "axes.titlesize": 8,
+        "axes.labelsize": 7,
+        "xtick.labelsize": 6,
+        "ytick.labelsize": 6,
+    })
+    fig, ejes = plt.subplots(2, 3, figsize=(12, 8), facecolor="white")
     fig.suptitle("DASHBOARD DE MONITOREO - Arquitectura de Datos (Hyperflix)",
-                 fontsize=18, fontweight="bold")
+                 fontsize=10, fontweight="bold", y=0.98)
 
     # 1. Documentos por colección
     ax = ejes[0, 0]
     nombres = [i["coleccion"] for i in info]
     cantidades = [i["docs"] for i in info]
-    colores = ["#d62728" if "analiticas" in n else "#e377c2" if n in config.COLECCIONES_DW
-               else "#1f77b4" for n in nombres]
+    colores = ["#ef7068" if "analiticas" in n else "#f2a6c4" if n in config.COLECCIONES_DW
+               else "#58b9b0" for n in nombres]
     ax.bar(nombres, cantidades, color=colores)
     ax.set_title("1. Documentos por Colección")
     ax.set_ylabel("Documentos")
-    ax.tick_params(axis="x", rotation=60, labelsize=8)
+    ax.tick_params(axis="x", rotation=60, labelsize=6)
     ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, p: f"{v:,.0f}"))
 
     # 2. Rendimiento de consultas
     ax = ejes[0, 1]
     nombres_q = [r["nombre"] for r in resultados]
     latencias = [r["latencia_ms"] for r in resultados]
-    ax.bar(nombres_q, latencias, color="#2ca02c")
-    ax.axhline(config.SLA_MS, color="lime", linestyle="--", linewidth=2)
+    ax.bar(nombres_q, latencias, color="#35c779")
+    ax.axhline(config.SLA_MS, color="#76c893", linestyle="--", linewidth=1)
     ax.text(len(nombres_q) - 0.4, config.SLA_MS + 12, f"Óptimo (<{config.SLA_MS}ms)",
-            color="green", fontsize=9)
+            color="#3a8f5b", fontsize=6)
     ax.set_title("2. Rendimiento de Consultas (OLAP)")
     ax.set_ylabel("Latencia (ms)")
-    ax.tick_params(axis="x", rotation=15, labelsize=8)
+    ax.tick_params(axis="x", rotation=15, labelsize=6)
     for i, lat in enumerate(latencias):
-        ax.text(i, lat + 6, f"{lat:.0f}", ha="center", fontsize=9)
+        ax.text(i, lat + 6, f"{lat:.0f}", ha="center", fontsize=6)
 
     # 3. Estimación de costos mensuales
     ax = ejes[0, 2]
     etiquetas_costo = [f"{k}\n${v:,.2f}" for k, v in partes_costo.items()]
     valores_costo = list(partes_costo.values())
     ax.pie(valores_costo, labels=etiquetas_costo, autopct="%1.1f%%",
-           colors=["#1f77b4", "#ff7f0e", "#2ca02c"], startangle=90, counterclock=False)
+            colors=["#3f9bd3", "#f3c969", "#70c49b"], startangle=90, counterclock=False,
+            textprops={"fontsize": 6})
     ax.text(0, 0, f"Total\n${costo_mensual:,.2f}", ha="center", va="center",
-            fontsize=11, fontweight="bold")
+            fontsize=7, fontweight="bold")
     ax.set_title("3. Estimación de Costos Mensuales")
 
     # 4. Tendencia de consumo mensual
     ax = ejes[1, 0]
     etiquetas_t, ingresos = serie_mensual
-    ax.plot(etiquetas_t, ingresos, marker="o", color="#9467bd")
+    ax.plot(etiquetas_t, ingresos, marker="o", color="#ef554b", linewidth=1.2, markersize=3)
     ax.set_title("4. Tendencia de Consumo Mensual (ingresos estimados)")
     ax.set_ylabel("Valor estimado (COP)")
-    ax.tick_params(axis="x", rotation=45, labelsize=7)
+    ax.tick_params(axis="x", rotation=45, labelsize=6)
     ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, p: f"{v/1_000_000:,.1f}M"))
 
     # 5. Métricas de almacenamiento normalizadas (0-100%)
     ax = ejes[1, 1]
     metricas = [100, (almacenamiento_gb / total_docs) * 100, (meses_con_datos / total_docs) * 100]
     nombres_m = ["Total\nDocumentos", "GB\nEstimados", "Meses\ncon Datos"]
-    ax.bar(nombres_m, metricas, color=["#1f77b4", "#ff7f0e", "#2ca02c"])
+    ax.bar(nombres_m, metricas, color=["#3f9bd3", "#f3c969", "#70c49b"])
     ax.set_title("5. Métricas de Almacenamiento (normalizado)")
     ax.set_ylabel("Escala 0-100%")
     ax.set_ylim(0, 105)
@@ -148,7 +157,7 @@ def construir_dashboard(info, resultados, consultas, total_docs, almacenamiento_
     # 6. Resumen ejecutivo
     ax = ejes[1, 2]
     ax.axis("off")
-    ax.set_facecolor("#111111")
+    ax.set_facecolor("#f5edda")
     estado = "OPERATIVO"
     resumen = (
         "RESUMEN EJECUTIVO DEL SISTEMA\n"
@@ -162,10 +171,11 @@ def construir_dashboard(info, resultados, consultas, total_docs, almacenamiento_
         f"Meses con Datos    : {meses_con_datos}"
     )
     ax.text(0.5, 0.5, resumen, transform=ax.transAxes, ha="center", va="center",
-            fontfamily="monospace", fontsize=14, linespacing=1.4, color="white",
-            bbox=dict(boxstyle="round,pad=0.9", facecolor="black", edgecolor="#2ca02c", linewidth=2))
+            fontfamily="monospace", fontsize=7, linespacing=1.4, color="#2f2a24",
+            bbox=dict(boxstyle="square,pad=0.8", facecolor="#f5edda",
+                  edgecolor="#6f6658", linewidth=1))
 
-    fig.tight_layout(rect=(0, 0, 1, 0.95))
+    fig.tight_layout(rect=(0, 0, 1, 0.95), pad=1.2)
     return fig
 
 
@@ -218,7 +228,7 @@ def generar_dashboard():
 
     config.CARPETA_DASHBOARD.mkdir(parents=True, exist_ok=True)
     archivo = config.CARPETA_DASHBOARD / f"dashboard_monitoreo_{datetime.now():%Y%m%d_%H%M%S}.png"
-    fig.savefig(archivo, dpi=110)
+    fig.savefig(archivo, dpi=300)
     plt.close(fig)
 
     tiempo_total = time.perf_counter() - inicio
