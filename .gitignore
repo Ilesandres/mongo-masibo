@@ -24,6 +24,7 @@ data_lake/processed/*.parquet
 data_lake/
 *.csv
 *.parquet
+Mongo/dashboards/   # PNG de los dashboards generados (no se versionan)
 
 # ── Entornos / IDEs ──────────────────────────────────────
 .idea/

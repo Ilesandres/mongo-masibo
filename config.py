@@ -63,6 +63,13 @@ ZONAS_DATALAKE = {
 PARQUET_ENGINE = "pyarrow"
 PARQUET_COMPRESSION = "snappy"
 
+# ── Dashboard de Monitoreo ────────────────────────────────
+CARPETA_DASHBOARD = DATA_LAKE_ROOT.parent / "dashboards"  # Mongo/dashboards
+SLA_MS = 500  # umbral "óptimo" de latencia para las consultas OLAP
+COSTO_BASE_ATLAS_MES = 57.04  # instancia base MongoDB Atlas (M10, USD/mes)
+PRECIO_GB_MENSUAL = 0.07  # almacenamiento estimado (USD/GB/mes)
+PRECIO_OPERACIONES_MES = 0.07  # operaciones/mantenimiento estimado (USD/mes)
+
 # ── Estrategia de indexación ───────────────────────────────
 # Índices únicos (por colección, campo que debe ser único)
 UNIQUE_INDEXES = {

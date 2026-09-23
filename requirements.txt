@@ -4,3 +4,5 @@ faker>=18.0
 pandas>=2.2
 pyarrow>=18.0
 pyspark>=4.0
+matplotlib>=3.8
+plotly>=5.18
