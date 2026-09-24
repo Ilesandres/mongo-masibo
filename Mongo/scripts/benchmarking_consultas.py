@@ -137,7 +137,7 @@ def ejecutar_benchmark():
                             "ticket_promedio": {"$avg": "$valor_estimado"},
                             "transacciones": {"$sum": 1}}},
                 {"$sort": {"ticket_promedio": -1, "_id.segmento": 1}},
-                {"$limit": 15},
+                {"$limit": 15}, 
                 {"$project": {"_id": 0, "ciudad": "$_id.ciudad", "segmento": "$_id.segmento",
                               "ticket_promedio": {"$round": ["$ticket_promedio", 2]},
                               "transacciones": 1}},
