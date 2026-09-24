@@ -17,5 +17,4 @@ output "cluster_tier" {
 output "mongo_uri_srv" {
   description = "URI de conexión (SRV) para config.py (.env: MONGO_URI)."
   value       = mongodbatlas_cluster.hyperflix.connection_strings[0].standard_srv
-  sensitive   = true
 }

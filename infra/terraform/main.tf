@@ -38,7 +38,7 @@ resource "mongodbatlas_cluster" "hyperflix" {
   provider_name               = "TENANT"
   backing_provider_name       = var.backing_provider_name
   provider_instance_size_name = var.cluster_tier
-  region                      = var.provider_region
+  provider_region_name        = var.provider_region
 }
 
 # Usuario de aplicación con credenciales propias

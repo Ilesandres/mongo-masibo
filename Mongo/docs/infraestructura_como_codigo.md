@@ -12,14 +12,19 @@ En Hyperflix esto significa que todo el entorno — **Replica Set de MongoDB, al
 | --- | --- |
 | **Docker Compose** (`docker-compose.infra.yml`) | Orquestación y aprovisionamiento local: MongoDB configura en **Replica Set `rs0`** (3 nodos), inicializado automáticamente por `rs_setup`, y **MinIO** como espejo S3 del Data Lake. Redes virtuales aisladas + volúmenes persistentes. |
 | **Terraform** (`infra/terraform/`) | Aprovisionamiento reproducible en la nube con el proveedor **`mongodb/mongodbatlas`**: crea el proyecto, el clúster (M0 por defecto, escalable a M10) y el usuario de base de datos, y expone la URI de conexión. |
-| **Script de automatización** (`deploy_infra.ps1`) | Comando único que valida Docker, despliega el compose, espera el estado *healthy* y la inicialización de la réplica, aparta la estructura del Data Lake y (opcional) ejecuta Terraform y prepara el venv. |
+| **Orquestador** (`deploy_infra.ps1`) | **Un solo comando hace TODO**: la parte local y la nube, en orden. Todo el resultado se muestra en la terminal y además queda en un log (`logs/infra_<fecha>.log`). |
+| **Script local** (`deploy_infra_local.ps1`) | Parte local: valida Docker, despliega el compose, espera el estado *healthy* y la inicialización de la réplica, aparta la estructura del Data Lake y prepara el venv. |
+| **Script nube** (`deploy_infra_nube.ps1`) | Parte nube: `terraform init` → `plan` → `apply` en MongoDB Atlas y muestra los outputs (incluida la URI). |
 
 ## 3. Estructura de archivos
 
 ```
 ├── docker-compose.infra.yml        # IaC local: Replica Set MongoDB rs0 + MinIO
-├── deploy_infra.ps1                # Script de automatización (PowerShell)
+├── deploy_infra.ps1                # Orquestador: 1 comando para TODO (local + nube)
+├── deploy_infra_local.ps1          # Script IaC de la parte LOCAL (Docker + MinIO)
+├── deploy_infra_nube.ps1           # Script IaC de la parte NUBE (Terraform Atlas)
 ├── .env.infra.example              # Plantilla de secretos del compose (NO se suben credenciales)
+├── logs/                           # Logs generados por los scripts (no versionado)
 └── infra/terraform/
     ├── main.tf                     # Recursos Atlas: proyecto, clúster, DB user
     ├── variables.tf                # Variables tipadas (defaults para M0 / AWS / US_EAST_1)
@@ -29,13 +34,15 @@ En Hyperflix esto significa que todo el entorno — **Replica Set de MongoDB, al
 
 ## 4. Cómo se despliega
 
+Cada script (`deploy_infra_local.ps1` y `deploy_infra_nube.ps1`) es ejecutable por sí solo; el orquestador los invoca en cadena. **El resultado siempre se muestra en la terminal y se escribe en `logs/`** (un archivo por ejecución del orquestador).
+
 ### 4.1 Infraestructura local (Replica Set + MinIO)
 
 Con Docker Desktop activo:
 
 ```powershell
 Copy-Item .env.infra.example .env.infra      # 1. definir credenciales de MinIO
-.\deploy_infra.ps1                            # 2. despliega y espera healthy + rs.initiate
+.\deploy_infra_local.ps1                      # 2. despliega y espera healthy + rs.initiate
 ```
 
 O manualmente:
@@ -61,21 +68,27 @@ Con `-Down` pide confirmación antes de actuar; `-Volumes` es destructivo (elimi
 
 ```powershell
 Copy-Item infra\terraform\terraform.tfvars.example infra\terraform\terraform.tfvars
-# editar terraform.tfvars con las llaves de la API de Atlas
-.\deploy_infra.ps1 -Terraform                # o: terraform init && terraform apply -auto-approve
+# editar terraform.tfvars con las llaves de la API de Atlas (nivel ORGANIZACIÓN)
+.\deploy_infra_nube.ps1                # init + plan + apply en Atlas (crea proyecto + clúster M0 + usuario)
+# (o manual: terraform -chdir=infra\terraform init && apply)
 ```
 
 El output `mongo_uri_srv` es la URI SRV que va en `.env` como `MONGO_URI` (leída por `config.py`).
 
-### 4.3 Reproducibilidad completa
+### 4.3 Reproducibilidad completa (un solo comando)
 
 ```powershell
-.\deploy_infra.ps1 -Terraform                # estructura + docker + Atlas + venv
+.\deploy_infra.ps1                 # TODO: local (data lake + Docker + venv) + nube (Atlas)
+.\deploy_infra.ps1 -SoloLocal      # solo la parte local        (equiv.: .\deploy_infra_local.ps1)
+.\deploy_infra.ps1 -SoloNube       # solo la parte nube         (equiv.: .\deploy_infra_nube.ps1)
 ```
+
+Toda la salida del despliegue queda registrada en `logs\infra_<fecha>.log` además de mostrarse en la terminal.
 
 ## 5. Qué garantiza esta implementación
 
-- **Reproducibilidad:** un solo comando levanta el ambiente completo; no hay pasos manuales documentados por aparte.
+- **Reproducibilidad:** un solo comando levanta el ambiente completo; no hay pasos manuales documentados por aparte (y cada parte tiene su propio script).
+- **Trazabilidad:** cada ejecución genera un log en `logs/` (ruta, comando y resultado), además de la salida en terminal.
 - **Secrets por separado:** ni el compose ni el Terraform llevan credenciales hardcodeadas (`.env.infra` y `terraform.tfvars` están en `.gitignore`; solo se versionan sus plantillas).
 - **Salud verificable:** healthchecks con `mongosh ping` y espera activa del estado *healthy* y de la inicialización de la réplica antes de continuar.
 - **Escalado:** el mismo Terraform pasa de `M0` (gratuito/local de pruebas) a `M10` cambiando una variable.

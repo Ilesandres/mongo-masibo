@@ -38,7 +38,9 @@ Corresponde al **PARCIAL BD PRIMER CORTE** del curso IPT (Arquitectura de Datos)
 │       └── infraestructura_como_codigo.md  # ⬅ IaC: cómo se despliega el entorno en código
 ├── config.py                   # Constantes centralizadas (lee secretos desde el .env)
 ├── docker-compose.infra.yml    # IaC local: Replica Set MongoDB rs0 + MinIO
-├── deploy_infra.ps1            # Script de automatización IaC (PowerShell)
+├── deploy_infra.ps1            # Orquestador IaC: 1 comando para TODO (local + nube)
+├── deploy_infra_local.ps1      # Script IaC de la parte LOCAL (Docker + MinIO)
+├── deploy_infra_nube.ps1       # Script IaC de la parte NUBE (Terraform Atlas)
 ├── infra/terraform/            # IaC nube: Terraform + proveedor MongoDB Atlas
 │   └── main.tf|variables.tf|outputs.tf|terraform.tfvars.example
 ├── requirements.txt
@@ -296,13 +298,17 @@ El entorno se define y despliega **desde código versionado**, no a mano. Comple
 
 - **`docker-compose.infra.yml`** — muestra local con **Replica Set `rs0`** de MongoDB (3 nodos: primary, secondary, arbiter, inicializado por el job `rs_setup` del perfil `rs-init` — idempotente sobre volúmenes persistentes) + **MinIO** (`quay.io/minio/minio`, espejo S3 del data lake). Healthchecks con `mongosh ping`/`curl`; credenciales vía `.env.infra` (plantilla: `.env.infra.example`).
 - **`infra/terraform/`** — proveedor `mongodb/mongodbatlas`: crea proyecto Atlas, clúster (M0 por defecto, escalable a M10) y usuario de BD; expone `mongo_uri_srv` para `config.py`. Credenciales en `terraform.tfvars` (no versionado).
-- **`deploy_infra.ps1`** — automatiza todo con un comando: valida Docker, despliega el compose, espera *healthy*/réplica, aparta las carpetas del data lake y, con `-Terraform`, aplica Atlas.
+- **`deploy_infra.ps1`** — **orquestador: UN solo comando hace TODO** (local + nube) en orden. También hay scripts individuales: `deploy_infra_local.ps1` (solo Docker) y `deploy_infra_nube.ps1` (solo Terraform). Todo el resultado se muestra en la terminal **y** se guarda en `logs/infra_<fecha>.log`.
 
 ```powershell
 Copy-Item .env.infra.example .env.infra
-.\deploy_infra.ps1            # infra local (RS + MinIO) y espera healthy + rs.initiate
-.\deploy_infra.ps1 -Terraform # además aprovisiona MongoDB Atlas
+.\deploy_infra.ps1             # TODO: infra local (RS + MinIO) + nube (Atlas con Terraform)
 # Manual: docker compose -f docker-compose.infra.yml up -d | up rs_setup
+
+.\deploy_infra.ps1 -SoloLocal  # solo la parte local (Docker + MinIO)
+.\deploy_infra.ps1 -SoloNube   # solo la parte nube  (MongoDB Atlas)
+.\deploy_infra_local.ps1       # equivalente manual del local
+.\deploy_infra_nube.ps1        # equivalente manual de la nube
 
 .\deploy_infra.ps1 -Down           # detener: apaga contenedores + red (datos intactos)
 .\deploy_infra.ps1 -Down -Volumes  # detener y BORRAR volúmenes (datos del RS/MinIO)
@@ -316,5 +322,6 @@ Copy-Item .env.infra.example .env.infra
 | `agents/` | Memoria interna de trabajo (opencode) |
 | `.env` y `.env.*` | Secretos (solo se versiona `.env.example`) |
 | `.venv/`, `__pycache__/`, `data_lake/`, `*.csv`, `*.parquet` | Entorno y datos generados |
-| `infra/terraform/.terraform/`, `*.tfstate`, `*.tfvars` | Estado y credenciales de Terraform |
+| `infra/terraform/.terraform/`, `*.tfstate`, `*.tfvars`, `tfplan` | Estado y credenciales de Terraform |
+| `logs/` | Logs generados por los scripts de despliegue |
 | `.env.infra` | Credenciales MinIO del compose (solo versión `.example`) |

@@ -25,15 +25,20 @@ data_lake/processed/*.parquet
 data_lake/
 *.csv
 *.parquet
-Mongo/dashboards/   # PNG de los dashboards generados (no se versionan)
+# PNG de los dashboards generados (no se versionan)
+Mongo/dashboards/
 
 # ── IaC (secretos y estado de Terraform) ──────────────────
 infra/terraform/.terraform/
 infra/terraform/*.tfstate
 infra/terraform/*.tfstate.*
 infra/terraform/crash.log
+infra/terraform/tfplan
 *.tfvars
 .env.infra
+
+# ── Logs de los scripts de despliegue ─────────────────────
+logs/
 
 # ── Entornos / IDEs ──────────────────────────────────────
 .idea/

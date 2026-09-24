@@ -1,163 +1,95 @@
-<#
+﻿<#
 .SYNOPSIS
-  Despliegue de Infraestructura como Código (IaC) — Hyperflix.
+  Despliegue INFRAESTRUCTURA COMO CÓDIGO (IaC) — Hyperflix. UN solo comando hace TODO.
 .DESCRIPTION
-  Automatiza el aprovisionamiento del entorno de forma reproducible:
-    1. Crea la estructura del data lake (Mongo/data_lake/{raw,processed,curated,spark}).
-    2. Levanta el Replica Set de MongoDB (rs0) + MinIO vía docker-compose.infra.yml.
-    3. Espera el estado healthy de Mongo + la inicialización de la réplica (rs_setup).
-    4. (Opcional) Aprovisiona MongoDB Atlas con Terraform (infra/terraform).
-    5. (Opcional) Prepara el venv e instala requirements.
+  Orquestador de la infraestructura. Por defecto ejecuta la parte LOCAL
+  (Docker + MinIO, vía deploy_infra_local.ps1) y la parte NUBE (MongoDB Atlas
+  con Terraform, vía deploy_infra_nube.ps1), en ese orden.
+  El resultado completo se muestra en la terminal y se guarda en logs/infra_<fecha>.log.
 .EXAMPLE
-  .\deploy_infra.ps1                    # Docker + estructura del data lake
-  .\deploy_infra.ps1 -Terraform         # incluye Terraform apply
-  .\deploy_infra.ps1 -SkipDocker        # solo estructura + venv
-  .\deploy_infra.ps1 -Down              # detiene: apaga contenedores + red (datos seguros)
-  .\deploy_infra.ps1 -Down -Volumes     # detiene y BORRA los volumenes (datos RS/MinIO)
+  .\deploy_infra.ps1                     # TODO: local (Docker) + nube (Terraform Atlas)
+  .\deploy_infra.ps1 -SoloLocal          # solo infraestructura local
+  .\deploy_infra.ps1 -SoloNube           # solo infraestructura en la nube (Atlas)
+  .\deploy_infra.ps1 -SkipEnv            # local sin venv/requirements
+  .\deploy_infra.ps1 -Down               # detiene lo local (apaga contenedores + red)
+  .\deploy_infra.ps1 -Down -Volumes      # lo mismo y BORRA los volumenes persistentes
+.NOTES
+  También existen los scripts individuales: .\deploy_infra_local.ps1 y .\deploy_infra_nube.ps1
 #>
 [CmdletBinding()]
 param(
-    [switch]$SkipDocker,
-    [switch]$Terraform,
+    [switch]$SoloLocal,
+    [switch]$SoloNube,
     [switch]$SkipEnv,
     [switch]$Down,
-    [switch]$Volumes,
-    [string]$TerraformDir = "$PSScriptRoot\infra\terraform"
+    [switch]$Volumes
 )
 
 $ErrorActionPreference = "Stop"
 $root = $PSScriptRoot
 
-# Ejecuta un comando nativo (docker/terraform) de forma segura bajo
-# $ErrorActionPreference="Stop": baja la política solo durante el comando,
-# deja que el stderr fluya a la consola y devuelve el exit code real.
-function Invoke-Nativo {
-    param([string]$Comando)
-    $ea = $ErrorActionPreference
-    $ErrorActionPreference = "Continue"
+if ($SoloLocal -and $SoloNube) {
+    Write-Error "[ERROR] Usa -SoloLocal o -SoloNube, no ambos."
+    exit 1
+}
+
+$LogFile = Join-Path $root "logs\infra_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
+New-Item -ItemType Directory -Path (Split-Path $LogFile) -Force | Out-Null
+
+function Escribir-Titulo {
+    param([string]$Texto)
+    Write-Host ""
+    Write-Host ("=" * 66) -ForegroundColor Cyan
+    Write-Host $Texto -ForegroundColor Cyan
+    Write-Host ("=" * 66) -ForegroundColor Cyan
+}
+
+Write-Host "`n=== Hyperflix IaC - INFRAESTRUCTURA COMO CÓDIGO ===" -ForegroundColor Cyan
+Write-Host "      Log del resultado: $LogFile"
+Write-Host "        (y en la terminal)   `n" -ForegroundColor DarkGray
+
+# ── Teardown local: detiene (o borra) la infraestructura local ──
+if ($Down) {
+    $env:HYPERFLIX_SIN_CONFIRMAR = "1"
     try {
-        Invoke-Expression $Comando | ForEach-Object { Write-Host $_ }
-        return $LASTEXITCODE
+        if ($Volumes) {
+            & (Join-Path $root "deploy_infra_local.ps1") -Down -Volumes
+        }
+        else {
+            & (Join-Path $root "deploy_infra_local.ps1") -Down
+        }
     }
     finally {
-        $ErrorActionPreference = $ea
+        Remove-Item Env:HYPERFLIX_SIN_CONFIRMAR -ErrorAction SilentlyContinue
     }
+    exit $LASTEXITCODE
 }
 
-# ── Modo "destruir" (teardown): para la infraestructura local
-if ($Down) {
-    Write-Host "`n=== Deteniendo Infraestructura IaC (Hyperflix) ===" -ForegroundColor Cyan
-    if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
-        Write-Error "[ERROR] Docker no esta instalado o no esta en el PATH."
-        exit 1
-    }
-    $compose = "docker compose -f `"$(Join-Path $root "docker-compose.infra.yml")`""
-    $detalle = "apaga los contenedores y la red (los datos persisten en los volumenes)"
-    $flag = ""
-    if ($Volumes) {
-        $detalle = "apaga todo y BORRA los volumenes persistentes (datos del RS y MinIO incluidos)"
-        $flag = " -v"
-    }
-    $resp = Read-Host "`nSe ${detalle}. Continuar? (s/N)"
-    if ($resp -notmatch "^(s|si|y|yes)$") {
-        Write-Host "  Cancelado por el usuario. Nada se detuvo." -ForegroundColor Yellow
-        exit 0
-    }
-    $codigo = Invoke-Nativo "$compose down$flag"
-    if ($codigo -ne 0) { Write-Error "[ERROR] Fallo al detener la infraestructura."; exit 1 }
-    Write-Host "`n=== Infraestructura detenida exitosamente ===" -ForegroundColor Green
-    exit 0
-}
-
-Write-Host "`n=== Iniciando Despliegue de Infraestructura como Codigo (IaC) - Hyperflix ===" -ForegroundColor Cyan
-
-# 1. Estructura del data lake (idempotente)
-Write-Host "`n[1/4] Preparando estructura del Data Lake..." -ForegroundColor Yellow
-$dataLake = Join-Path $root "Mongo\data_lake"
-foreach ($zona in @("raw", "processed", "curated", "curated\spark")) {
-    $dir = Join-Path $dataLake $zona
-    if (-not (Test-Path $dir)) {
-        New-Item -ItemType Directory -Path $dir -Force | Out-Null
-        Write-Host "  [OK] $zona"
+# ── Despliegue: local y/o nube según flags ──
+if (-not $SoloNube) {
+    Escribir-Titulo " 1/2  LOCAL  (Docker Replica Set + MinIO)  "
+    if ($SkipEnv) {
+        & (Join-Path $root "deploy_infra_local.ps1") -LogFile $LogFile -SkipEnv
     }
     else {
-        Write-Host "  [--] $zona (ya existe)"
+        & (Join-Path $root "deploy_infra_local.ps1") -LogFile $LogFile
     }
-}
-
-# 2. Docker Compose (Replica Set MongoDB + MinIO)
-if (-not $SkipDocker) {
-    Write-Host "`n[2/4] Validando Docker..." -ForegroundColor Yellow
-    if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
-        Write-Error "[ERROR] Docker no esta instalado o no esta en el PATH."
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "[ERROR] La fase LOCAL fallo. Detalle completo en el log." -ForegroundColor Red
         exit 1
     }
-    $compose = "docker compose -f `"$(Join-Path $root "docker-compose.infra.yml")`""
-    $codigo = Invoke-Nativo "docker version --format 'Server: {`{.Server.Version`}'"
-    if ($codigo -ne 0) {
-        Write-Error "[ERROR] Docker no esta corriendo. Inicia Docker Desktop."
+}
+
+if (-not $SoloLocal) {
+    Write-Host -NoNewline "" # (separador visual)
+    Write-Host ""
+    Escribir-Titulo " 2/2  NUBE  (MongoDB Atlas con Terraform)  "
+    & (Join-Path $root "deploy_infra_nube.ps1") -LogFile $LogFile
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "[ERROR] La fase NUBE fallo. Detalle completo en el log." -ForegroundColor Red
         exit 1
     }
-    Write-Host "  [OK] Docker activo"
-
-    Write-Host "`n[3/4] Desplegando contenedores, redes y volumenes persistentes..." -ForegroundColor Yellow
-    $codigo = Invoke-Nativo "$compose up -d"
-    if ($codigo -ne 0) { Write-Error "[ERROR] Fallo al levantar docker compose."; exit 1 }
-
-    Write-Host "`n  Esperando arranque de los nodos del Replica Set (healthchecks)..." -ForegroundColor Yellow
-    $nodos = @("mongo_primary", "mongo_secondary", "mongo_arbiter")
-    $espera_maxima = 180
-    foreach ($nodo in $nodos) {
-        $ok = $false
-        for ($i = 0; $i -lt $espera_maxima; $i += 10) {
-            $estado = docker inspect --format "{{.State.Health.Status}}" $nodo 2>$null
-            if ($estado -eq "healthy") { $ok = $true; break }
-            Start-Sleep -Seconds 10
-        }
-        if (-not $ok) {
-            Write-Error "[ERROR] El nodo $nodo no llego a healthy a tiempo."
-            exit 1
-        }
-        Write-Host "  [OK] $nodo healthy"
-    }
-
-    Write-Host "`n  Inicializando el Replica Set (rs_init => rs.initiate)..." -ForegroundColor Yellow
-    $codigo = Invoke-Nativo "$compose up rs_setup"
-    if ($codigo -ne 0) { Write-Warning "  [AVISO] rs_setup no termino con codigo 0 (si ya estaba inicializado, es normal)." }
-    Write-Host "`n  Estado del Replica Set:"
-    Invoke-Nativo "$compose ps"
 }
 
-# 4. Terraform (opcional)
-if ($Terraform) {
-    Write-Host "`n[4/4] Aprovisionando MongoDB Atlas con Terraform..." -ForegroundColor Yellow
-    if (-not (Get-Command terraform -ErrorAction SilentlyContinue)) {
-        Write-Error "[ERROR] terraform no esta instalado."
-        exit 1
-    }
-    pushd $TerraformDir
-    try {
-        terraform init -input=false
-        if ($LASTEXITCODE -ne 0) { throw "terraform init fallo" }
-        terraform apply -auto-approve
-        if ($LASTEXITCODE -ne 0) { throw "terraform apply fallo" }
-        Write-Host "`n  [OK] Atlas aprovisionado. Usa el output mongo_uri_srv en .env (MONGO_URI)." -ForegroundColor Green
-    }
-    finally {
-        popd
-    }
-}
-
-# 5. venv + dependencias (opcional)
-if (-not $SkipEnv) {
-    $venvPython = Join-Path $root ".venv\Scripts\python.exe"
-    if (-not (Test-Path $venvPython)) {
-        Write-Host "`n[+] Creando entorno virtual (.venv)..." -ForegroundColor Yellow
-        python -m venv (Join-Path $root ".venv")
-    }
-    Write-Host "`n[+] Instalando dependencias (requirements.txt)..." -ForegroundColor Yellow
-    & $venvPython -m pip install -r (Join-Path $root "requirements.txt")
-    if ($LASTEXITCODE -ne 0) { Write-Error "[ERROR] No se pudieron instalar las dependencias."; exit 1 }
-}
-
-Write-Host "`n=== Infraestructura desplegada exitosamente ===" -ForegroundColor Green
+Write-Host "`n=== INFRAESTRUCTURA COMPLETA desplegada correctamente ===" -ForegroundColor Green
+Write-Host "      Log: $LogFile" -ForegroundColor DarkGray
