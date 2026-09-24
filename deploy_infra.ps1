@@ -24,6 +24,22 @@ param(
 $ErrorActionPreference = "Stop"
 $root = $PSScriptRoot
 
+# Ejecuta un comando nativo (docker/terraform) de forma segura bajo
+# $ErrorActionPreference="Stop": baja la política solo durante el comando,
+# deja que el stderr fluya a la consola y devuelve el exit code real.
+function Invoke-Nativo {
+    param([string]$Comando)
+    $ea = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        Invoke-Expression $Comando | ForEach-Object { Write-Host $_ }
+        return $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $ea
+    }
+}
+
 Write-Host "`n=== Iniciando Despliegue de Infraestructura como Codigo (IaC) - Hyperflix ===" -ForegroundColor Cyan
 
 # 1. Estructura del data lake (idempotente)
@@ -47,16 +63,17 @@ if (-not $SkipDocker) {
         Write-Error "[ERROR] Docker no esta instalado o no esta en el PATH."
         exit 1
     }
-    docker info *> $null
-    if ($LASTEXITCODE -ne 0) {
+    $compose = "docker compose -f `"$(Join-Path $root "docker-compose.infra.yml")`""
+    $codigo = Invoke-Nativo "docker version --format 'Server: {`{.Server.Version`}'"
+    if ($codigo -ne 0) {
         Write-Error "[ERROR] Docker no esta corriendo. Inicia Docker Desktop."
         exit 1
     }
     Write-Host "  [OK] Docker activo"
 
     Write-Host "`n[3/4] Desplegando contenedores, redes y volumenes persistentes..." -ForegroundColor Yellow
-    docker compose -f (Join-Path $root "docker-compose.infra.yml") up -d
-    if ($LASTEXITCODE -ne 0) { Write-Error "[ERROR] Fallo al levantar docker compose."; exit 1 }
+    $codigo = Invoke-Nativo "$compose up -d"
+    if ($codigo -ne 0) { Write-Error "[ERROR] Fallo al levantar docker compose."; exit 1 }
 
     Write-Host "`n  Esperando arranque de los nodos del Replica Set (healthchecks)..." -ForegroundColor Yellow
     $nodos = @("mongo_primary", "mongo_secondary", "mongo_arbiter")
@@ -76,9 +93,10 @@ if (-not $SkipDocker) {
     }
 
     Write-Host "`n  Inicializando el Replica Set (rs_init => rs.initiate)..." -ForegroundColor Yellow
-    docker compose -f (Join-Path $root "docker-compose.infra.yml") up rs_setup
+    $codigo = Invoke-Nativo "$compose up rs_setup"
+    if ($codigo -ne 0) { Write-Warning "  [AVISO] rs_setup no termino con codigo 0 (si ya estaba inicializado, es normal)." }
     Write-Host "`n  Estado del Replica Set:"
-    docker compose -f (Join-Path $root "docker-compose.infra.yml") ps
+    Invoke-Nativo "$compose ps"
 }
 
 # 4. Terraform (opcional)

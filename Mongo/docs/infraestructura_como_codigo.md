@@ -41,10 +41,11 @@ Copy-Item .env.infra.example .env.infra      # 1. definir credenciales de MinIO
 O manualmente:
 
 ```powershell
-docker compose -f docker-compose.infra.yml up -d
+docker compose -f docker-compose.infra.yml up -d          # levanta nodos + MinIO
+docker compose -f docker-compose.infra.yml up rs_setup    # inicializa el Replica Set (rs0)
 ```
 
-El **`rs_setup`** ejecuta `rs.initiate()` con tres miembros (`mongodb_primary`, `mongodb_secondary` y `mongodb_arbiter`), de modo que el Replica Set queda operativo y **MongoDB Change Streams (Fase 7) puede usarse en local**.
+El **`rs_setup`** ejecuta `rs.initiate()` con tres miembros (`mongodb_primary`, `mongodb_secondary` y `mongodb_arbiter`), de modo que el Replica Set queda operativo y **MongoDB Change Streams (Fase 7) puede usarse en local**. Está aislado en el perfil `rs-init`, así que `docker compose up -d` no lo dispara por accidente; si ya se inicializó al re-desplegar (los volúmenes persisten), reporta `already initialized` y el estado de los 3 miembros — operación idempotente.
 
 ### 4.2 Nube (MongoDB Atlas) con Terraform
 

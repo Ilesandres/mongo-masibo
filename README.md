@@ -294,14 +294,15 @@ Resultado esperado en pantalla: recuento y tamaño por zona (RAW/PROCESSED/CURAT
 
 El entorno se define y despliega **desde código versionado**, no a mano. Complementos de la rúbrica que cubre esta sección: script de automatización + Terraform. Detalle completo en [`Mongo/docs/infraestructura_como_codigo.md`](Mongo/docs/infraestructura_como_codigo.md).
 
-- **`docker-compose.infra.yml`** — muestra local con **Replica Set `rs0`** de MongoDB (3 nodos: primary, secondary, arbiter, inicializado automáticamente por `rs_setup`) + **MinIO** como espejo S3 del data lake. Healthchecks con `mongosh ping`; credenciales vía `.env.infra` (plantilla: `.env.infra.example`).
+- **`docker-compose.infra.yml`** — muestra local con **Replica Set `rs0`** de MongoDB (3 nodos: primary, secondary, arbiter, inicializado por el job `rs_setup` del perfil `rs-init` — idempotente sobre volúmenes persistentes) + **MinIO** (`quay.io/minio/minio`, espejo S3 del data lake). Healthchecks con `mongosh ping`/`curl`; credenciales vía `.env.infra` (plantilla: `.env.infra.example`).
 - **`infra/terraform/`** — proveedor `mongodb/mongodbatlas`: crea proyecto Atlas, clúster (M0 por defecto, escalable a M10) y usuario de BD; expone `mongo_uri_srv` para `config.py`. Credenciales en `terraform.tfvars` (no versionado).
 - **`deploy_infra.ps1`** — automatiza todo con un comando: valida Docker, despliega el compose, espera *healthy*/réplica, aparta las carpetas del data lake y, con `-Terraform`, aplica Atlas.
 
 ```powershell
 Copy-Item .env.infra.example .env.infra
-.\deploy_infra.ps1            # infra local (RS + MinIO)
+.\deploy_infra.ps1            # infra local (RS + MinIO) y espera healthy + rs.initiate
 .\deploy_infra.ps1 -Terraform # además aprovisiona MongoDB Atlas
+# Manual: docker compose -f docker-compose.infra.yml up -d | up rs_setup
 ```
 
 ## No se versiona (`.gitignore`)

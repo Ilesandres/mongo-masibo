@@ -83,11 +83,15 @@ services:
       retries: 12
       start_period: 30s
 
-  # ── Inicializa la réplica (rs.initiate) una vez que los 3 nodos están sanos
+  # ── Inicializa la réplica (rs.initiate) una vez que los 3 nodos están sanos.
+  #    Perfil "rs-init": `docker compose up -d` lo ignora; solo se ejecuta con
+  #    `docker compose -f docker-compose.infra.yml up rs_setup` (idempotente,
+  #    si ya está inicializado reporta "already initialized" y el estado).
   rs_setup:
     image: mongo:7.0
     container_name: mongo_rs_setup
     restart: "no"
+    profiles: ["rs-init"]
     depends_on:
       mongodb_primary:
         condition: service_healthy
@@ -115,8 +119,9 @@ services:
       - hyperflix_net
 
   # ── Almacenamiento de objetos S3-compatible (espejo del Data Lake)
+  # Nota: `minio/minio` ya NO existe en Docker Hub (se movió a quay.io).
   minio_storage:
-    image: minio/minio:latest
+    image: quay.io/minio/minio:latest
     container_name: minio_storage
     restart: always
     ports:
@@ -131,7 +136,7 @@ services:
     networks:
       - hyperflix_net
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
       interval: 10s
       timeout: 5s
       retries: 12
