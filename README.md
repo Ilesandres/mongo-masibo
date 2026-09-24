@@ -303,6 +303,9 @@ Copy-Item .env.infra.example .env.infra
 .\deploy_infra.ps1            # infra local (RS + MinIO) y espera healthy + rs.initiate
 .\deploy_infra.ps1 -Terraform # además aprovisiona MongoDB Atlas
 # Manual: docker compose -f docker-compose.infra.yml up -d | up rs_setup
+
+.\deploy_infra.ps1 -Down           # detener: apaga contenedores + red (datos intactos)
+.\deploy_infra.ps1 -Down -Volumes  # detener y BORRAR volúmenes (datos del RS/MinIO)
 ```
 
 ## No se versiona (`.gitignore`)

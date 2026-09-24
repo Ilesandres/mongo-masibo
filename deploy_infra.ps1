@@ -12,12 +12,16 @@
   .\deploy_infra.ps1                    # Docker + estructura del data lake
   .\deploy_infra.ps1 -Terraform         # incluye Terraform apply
   .\deploy_infra.ps1 -SkipDocker        # solo estructura + venv
+  .\deploy_infra.ps1 -Down              # detiene: apaga contenedores + red (datos seguros)
+  .\deploy_infra.ps1 -Down -Volumes     # detiene y BORRA los volumenes (datos RS/MinIO)
 #>
 [CmdletBinding()]
 param(
     [switch]$SkipDocker,
     [switch]$Terraform,
     [switch]$SkipEnv,
+    [switch]$Down,
+    [switch]$Volumes,
     [string]$TerraformDir = "$PSScriptRoot\infra\terraform"
 )
 
@@ -38,6 +42,31 @@ function Invoke-Nativo {
     finally {
         $ErrorActionPreference = $ea
     }
+}
+
+# ── Modo "destruir" (teardown): para la infraestructura local
+if ($Down) {
+    Write-Host "`n=== Deteniendo Infraestructura IaC (Hyperflix) ===" -ForegroundColor Cyan
+    if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
+        Write-Error "[ERROR] Docker no esta instalado o no esta en el PATH."
+        exit 1
+    }
+    $compose = "docker compose -f `"$(Join-Path $root "docker-compose.infra.yml")`""
+    $detalle = "apaga los contenedores y la red (los datos persisten en los volumenes)"
+    $flag = ""
+    if ($Volumes) {
+        $detalle = "apaga todo y BORRA los volumenes persistentes (datos del RS y MinIO incluidos)"
+        $flag = " -v"
+    }
+    $resp = Read-Host "`nSe ${detalle}. Continuar? (s/N)"
+    if ($resp -notmatch "^(s|si|y|yes)$") {
+        Write-Host "  Cancelado por el usuario. Nada se detuvo." -ForegroundColor Yellow
+        exit 0
+    }
+    $codigo = Invoke-Nativo "$compose down$flag"
+    if ($codigo -ne 0) { Write-Error "[ERROR] Fallo al detener la infraestructura."; exit 1 }
+    Write-Host "`n=== Infraestructura detenida exitosamente ===" -ForegroundColor Green
+    exit 0
 }
 
 Write-Host "`n=== Iniciando Despliegue de Infraestructura como Codigo (IaC) - Hyperflix ===" -ForegroundColor Cyan

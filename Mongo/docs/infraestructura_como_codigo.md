@@ -47,6 +47,16 @@ docker compose -f docker-compose.infra.yml up rs_setup    # inicializa el Replic
 
 El **`rs_setup`** ejecuta `rs.initiate()` con tres miembros (`mongodb_primary`, `mongodb_secondary` y `mongodb_arbiter`), de modo que el Replica Set queda operativo y **MongoDB Change Streams (Fase 7) puede usarse en local**. Está aislado en el perfil `rs-init`, así que `docker compose up -d` no lo dispara por accidente; si ya se inicializó al re-desplegar (los volúmenes persisten), reporta `already initialized` y el estado de los 3 miembros — operación idempotente.
 
+**Detener (teardown):**
+
+```powershell
+.\deploy_infra.ps1 -Down           # apaga contenedores + red, conserva los datos
+.\deploy_infra.ps1 -Down -Volumes  # además BORRA los volúmenes (datos RS y MinIO)
+# equivalente manual: docker compose -f docker-compose.infra.yml down [-v]
+```
+
+Con `-Down` pide confirmación antes de actuar; `-Volumes` es destructivo (elimina los datos persistentes del Replica Set y de MinIO).
+
 ### 4.2 Nube (MongoDB Atlas) con Terraform
 
 ```powershell
