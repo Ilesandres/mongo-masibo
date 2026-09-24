@@ -2,6 +2,7 @@
 .env
 .env.*
 !.env.example
+!.env.infra.example
 
 # ── Documentos guía (contexto base, NO se publican) ──────
 taller-conexion-mongo/
