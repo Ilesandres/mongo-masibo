@@ -1,0 +1,13 @@
+# Copia a terraform.tfvars y completa con TUS credenciales.
+# terraform.tfvars NO se sube a Git (ver .gitignore).
+
+org_id                  = "514d7f8e...minID"
+mongodbatlas_public_key  = "tu_public_key"
+mongodbatlas_private_key = "tu_private_key"
+project_name            = "Hyperflix-IPT"
+cluster_name            = "HyperflixCluster"
+backing_provider_name   = "AWS"
+provider_region         = "US_EAST_1"
+cluster_tier            = "M0"
+db_user                 = "hyperflix_app"
+db_password             = "cambia-esta-password"

@@ -1,0 +1,138 @@
+# ──────────────────────────────────────────────────────────────
+# Infraestructura como Código (IaC) — Hyperflix
+# docker-compose.infra.yml
+#
+# Levanta un Replica Set de MongoDB (necesario para Change Streams,
+# Fase 7) y MinIO como almacenamiento de objetos compatible con S3
+# (espejo del Data Lake de la Fase 6).
+#
+# Secretos: NO se escriben aquí. Se cargan desde el entorno o un
+# archivo .env.infra (ver .env.infra.example). Incluye healthchecks
+# (mongosh ping) y un job rs_setup que inicia la réplica automáticamente.
+# ──────────────────────────────────────────────────────────────
+
+networks:
+  hyperflix_net:
+    driver: bridge
+
+volumes:
+  mongo_primary_data:
+  mongo_secondary_data:
+  mongo_arbiter_data:
+  minio_data:
+
+services:
+  # ── Nodo Primario de MongoDB (OLTP / base principal del Replica Set)
+  mongodb_primary:
+    image: mongo:7.0
+    container_name: mongo_primary
+    restart: always
+    command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_primary_data:/data/db
+    networks:
+      - hyperflix_net
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand({ping:1}).ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  # ── Nodo Secundario (alta disponibilidad / DR)
+  mongodb_secondary:
+    image: mongo:7.0
+    container_name: mongo_secondary
+    restart: always
+    command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
+    ports:
+      - "27018:27017"
+    volumes:
+      - mongo_secondary_data:/data/db
+    networks:
+      - hyperflix_net
+    depends_on:
+      - mongodb_primary
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand({ping:1}).ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  # ── Árbitro (voto de mayoría con 3 nodos sin almacenar datos)
+  mongodb_arbiter:
+    image: mongo:7.0
+    container_name: mongo_arbiter
+    restart: always
+    command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
+    ports:
+      - "27019:27017"
+    volumes:
+      - mongo_arbiter_data:/data/db
+    networks:
+      - hyperflix_net
+    depends_on:
+      - mongodb_primary
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand({ping:1}).ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  # ── Inicializa la réplica (rs.initiate) una vez que los 3 nodos están sanos
+  rs_setup:
+    image: mongo:7.0
+    container_name: mongo_rs_setup
+    restart: "no"
+    depends_on:
+      mongodb_primary:
+        condition: service_healthy
+      mongodb_secondary:
+        condition: service_healthy
+      mongodb_arbiter:
+        condition: service_healthy
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        mongosh --host mongodb_primary:27017 --quiet --eval "
+          rs.initiate({
+            _id: 'rs0',
+            members: [
+              {_id: 0, host: 'mongodb_primary:27017'},
+              {_id: 1, host: 'mongodb_secondary:27017'},
+              {_id: 2, host: 'mongodb_arbiter:27017', arbiterOnly: true}
+            ]
+          })
+        " || true
+        sleep 8
+        mongosh --host mongodb_primary:27017 --quiet --eval \
+          "rs.status().members.forEach(m => print(m.name, '->', m.stateStr))"
+    networks:
+      - hyperflix_net
+
+  # ── Almacenamiento de objetos S3-compatible (espejo del Data Lake)
+  minio_storage:
+    image: minio/minio:latest
+    container_name: minio_storage
+    restart: always
+    ports:
+      - "9000:9000"   # API S3
+      - "9001:9001"   # Consola web
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-hyperflix_admin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-changeMe123456}
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+    networks:
+      - hyperflix_net
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
