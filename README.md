@@ -35,9 +35,15 @@ Corresponde al **PARCIAL BD PRIMER CORTE** del curso IPT (Arquitectura de Datos)
 │   │   └── curated/spark/                 # Resultados de los Spark Jobs (listos para BI)
 │   ├── dashboards/                        # PNG generados por el dashboard (no versionado)
 │   └── docs/                   # Documentación del informe
+│       └── infraestructura_como_codigo.md  # ⬅ IaC: cómo se despliega el entorno en código
 ├── config.py                   # Constantes centralizadas (lee secretos desde el .env)
+├── docker-compose.infra.yml    # IaC local: Replica Set MongoDB rs0 + MinIO
+├── deploy_infra.ps1            # Script de automatización IaC (PowerShell)
+├── infra/terraform/            # IaC nube: Terraform + proveedor MongoDB Atlas
+│   └── main.tf|variables.tf|outputs.tf|terraform.tfvars.example
 ├── requirements.txt
 ├── .env.example                # Plantilla de secretos
+├── .env.infra.example          # Plantilla de secretos del compose (IaC local)
 └── taller-conexion-mongo/      # Guías (contexto, NO se sube a Git)
 ```
 
@@ -65,6 +71,8 @@ Cada entidad vive en su propio archivo dentro de `Mongo/models/` y expone una fu
 - **Pandas + PyArrow** para la generación de Parquet (Snappy) del data lake
 - **Matplotlib + Plotly** para el dashboard de monitoreo (PNG de 6 paneles)
 - **Java 11/17/21 (JVM) + `JAVA_HOME`** para Apache Spark (PySpark): `winget install EclipseAdoptium.Temurin.21.JDK`
+- **Docker Desktop** (opcional) para IaC local: Replica Set MongoDB `rs0` + MinIO (`docker-compose.infra.yml`)
+- **Terraform ≥ 1.5** (opcional) para IaC en la nube con el proveedor `mongodb/mongodbatlas`
 - Opcional: MongoDB Compass para inspección visual
 
 Hasta 50.000 reproducciones el cluster gratuito M0 responde bien; con 100.000+ toma **varios minutos** en la fase de generación y exportación RAW.
@@ -282,6 +290,20 @@ Configurables en `config.py` (`NUM_*`):
 
 Resultado esperado en pantalla: recuento y tamaño por zona (RAW/PROCESSED/CURATED + total).
 
+## Infraestructura como Código (IaC)
+
+El entorno se define y despliega **desde código versionado**, no a mano. Complementos de la rúbrica que cubre esta sección: script de automatización + Terraform. Detalle completo en [`Mongo/docs/infraestructura_como_codigo.md`](Mongo/docs/infraestructura_como_codigo.md).
+
+- **`docker-compose.infra.yml`** — muestra local con **Replica Set `rs0`** de MongoDB (3 nodos: primary, secondary, arbiter, inicializado automáticamente por `rs_setup`) + **MinIO** como espejo S3 del data lake. Healthchecks con `mongosh ping`; credenciales vía `.env.infra` (plantilla: `.env.infra.example`).
+- **`infra/terraform/`** — proveedor `mongodb/mongodbatlas`: crea proyecto Atlas, clúster (M0 por defecto, escalable a M10) y usuario de BD; expone `mongo_uri_srv` para `config.py`. Credenciales en `terraform.tfvars` (no versionado).
+- **`deploy_infra.ps1`** — automatiza todo con un comando: valida Docker, despliega el compose, espera *healthy*/réplica, aparta las carpetas del data lake y, con `-Terraform`, aplica Atlas.
+
+```powershell
+Copy-Item .env.infra.example .env.infra
+.\deploy_infra.ps1            # infra local (RS + MinIO)
+.\deploy_infra.ps1 -Terraform # además aprovisiona MongoDB Atlas
+```
+
 ## No se versiona (`.gitignore`)
 
 | Ítem | Motivo |
@@ -290,3 +312,5 @@ Resultado esperado en pantalla: recuento y tamaño por zona (RAW/PROCESSED/CURAT
 | `agents/` | Memoria interna de trabajo (opencode) |
 | `.env` y `.env.*` | Secretos (solo se versiona `.env.example`) |
 | `.venv/`, `__pycache__/`, `data_lake/`, `*.csv`, `*.parquet` | Entorno y datos generados |
+| `infra/terraform/.terraform/`, `*.tfstate`, `*.tfvars` | Estado y credenciales de Terraform |
+| `.env.infra` | Credenciales MinIO del compose (solo versión `.example`) |
