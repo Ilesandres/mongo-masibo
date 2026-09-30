@@ -36,6 +36,8 @@ if ($SoloLocal -and $SoloNube) {
 $LogFile = Join-Path $root "logs\infra_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
 New-Item -ItemType Directory -Path (Split-Path $LogFile) -Force | Out-Null
 
+try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
+
 function Escribir-Titulo {
     param([string]$Texto)
     Write-Host ""
@@ -44,9 +46,12 @@ function Escribir-Titulo {
     Write-Host ("=" * 66) -ForegroundColor Cyan
 }
 
-Write-Host "`n=== Hyperflix IaC - INFRAESTRUCTURA COMO CÓDIGO ===" -ForegroundColor Cyan
-Write-Host "      Log del resultado: $LogFile"
-Write-Host "        (y en la terminal)   `n" -ForegroundColor DarkGray
+Write-Host ""
+Write-Host "  ╔═════════════════════════════════════════════════════════════╗" -ForegroundColor Magenta
+Write-Host "  ║   🚀  HYPERFLIX · INFRAESTRUCTURA COMO CÓDIGO  ·  1 COMANDO  ║" -ForegroundColor Cyan
+Write-Host "  ║   🐳  Local (Docker · MinIO)   +   ☁️  Nube (Atlas · Terraform) ║" -ForegroundColor Cyan
+Write-Host "  ╚═════════════════════════════════════════════════════════════╝" -ForegroundColor Magenta
+Write-Host "      Log del resultado: $LogFile   (y en la terminal)`n" -ForegroundColor DarkGray
 
 # ── Teardown local: detiene (o borra) la infraestructura local ──
 if ($Down) {

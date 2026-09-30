@@ -38,11 +38,52 @@ VENV_PY = VENV_DIR / ("Scripts" if sys.platform == "win32" else "bin") / "python
 
 RESULTADOS = []
 
+# ── Estética / stickers con aspecto "generado por IA" ────────
+EMOJIS = {
+    "python": "🐍", "venv": "🧪", "deps": "📦", "lake": "🗃️",
+    "env": "🔑", "health": "📡", "nube": "☁️", "ok": "🚀", "alerta": "⚠️",
+}
+
+# Colores ANSI (solo activos si la salida es una terminal real).
+_RESET = "\033[0m"
+_CYAN = "\033[96m"
+_GREEN = "\033[92m"
+_YELLOW = "\033[93m"
+_RED = "\033[91m"
+_MAGENTA = "\033[95m"
+_BOLD = "\033[1m"
+if not sys.stdout.isatty():
+    _RESET = _CYAN = _GREEN = _YELLOW = _RED = _MAGENTA = _BOLD = ""
+
+
+def banner():
+    print()
+    print(f"  {_MAGENTA}╔═══════════════════════════════════════════════════════════════╗{_RESET}")
+    print(f"  {_MAGENTA}║{_RESET}{_BOLD}   ✨  HYPERFLIX · CONFIGURATION AS CODE  ✨{_RESET}                      {_MAGENTA}║{_RESET}")
+    print(f"  {_MAGENTA}║{_RESET}   {EMOJIS['python']} Python   {EMOJIS['venv']} venv   {EMOJIS['deps']} deps   {EMOJIS['lake']} data lake          {_MAGENTA}║{_RESET}")
+    print(f"  {_MAGENTA}║{_RESET}   {EMOJIS['env']} .env   {EMOJIS['health']} Atlas   {EMOJIS['nube']} nube automática          {_MAGENTA}║{_RESET}")
+    print(f"  {_MAGENTA}╚═══════════════════════════════════════════════════════════════╝{_RESET}")
+
+
+def encabezado(numero, total, emoji, titulo):
+    print()
+    print(f"  {_CYAN}╭─ {emoji}  PASO {numero}/{total} · {titulo}{_RESET}")
+    print(f"  {_CYAN}│{_RESET}")
+
+
+def barra_progreso(ok_count, total):
+    ancho = 20
+    lleno = round(ancho * ok_count / total) if total else 0
+    pct = round(100 * ok_count / total) if total else 0
+    relleno = "█" * lleno + "░" * (ancho - lleno)
+    color = _GREEN if pct >= 100 else (_YELLOW if pct >= 50 else _RED)
+    print(f"  {color}Progreso: [{relleno}] {pct}% ({ok_count}/{total} pasos){_RESET}")
+
 
 def resumen(nombre, ok, detalle):
-    estado = "[OK]" if ok else "[KO]"
     RESULTADOS.append((nombre, ok))
-    print(f"  {estado} {nombre}: {detalle}")
+    marca = f"{_GREEN}✔{_RESET}" if ok else f"{_RED}✘{_RESET}"
+    print(f"  {marca}  {nombre}: {detalle}")
 
 
 def python_version(executable):
@@ -60,9 +101,9 @@ def crear_venv(executable):
     return proc.returncode == 0
 
 
-# ── 1/6  Python ─────────────────────────────────────────────
+# ── 1/7  Python ─────────────────────────────────────────────
 def fase_python():
-    print("\n[1/6] Validando versión de Python ...")
+    encabezado(1, 7, EMOJIS["python"], "Validar versión de Python (>= 3.12)")
     v = sys.version_info
     actual = f"{v.major}.{v.minor}.{v.micro}"
     minimo = f"{PY_MIN[0]}.{PY_MIN[1]}"
@@ -72,9 +113,9 @@ def fase_python():
         resumen("Python", False, f"versión {actual} es MENOR que {minimo} requerido.")
 
 
-# ── 2/6  Entorno virtual (.venv) ────────────────────────────
+# ── 2/7  Entorno virtual (.venv) ───────────────────────────
 def fase_venv():
-    print("\n[2/6] Validando entorno virtual (.venv) ...")
+    encabezado(2, 7, EMOJIS["venv"], "Entorno virtual (.venv)")
     if not VENV_PY.exists():
         ok = crear_venv(sys.executable)
         resumen(".venv", ok, "creado desde cero." if ok else "no se pudo crear.")
@@ -90,9 +131,9 @@ def fase_venv():
         resumen(".venv", ok, "recreado con la versión actual de Python." if ok else "falló al recrear.")
 
 
-# ── 3/6  Dependencias ───────────────────────────────────────
+# ── 3/7  Dependencias ───────────────────────────────────────
 def fase_dependencias():
-    print("\n[3/6] Verificando dependencias (requirements.txt) ...")
+    encabezado(3, 7, EMOJIS["deps"], "Verificar dependencias (requirements.txt)")
     if not REQUIREMENTS.exists():
         resumen("Dependencias", False, f"no existe {REQUIREMENTS.name}.")
         return
@@ -113,9 +154,9 @@ def fase_dependencias():
     resumen("Dependencias", ok, "instaladas y consistentes (pip check OK)." if ok else "conflictos detectados (pip check).")
 
 
-# ── 4/6  Data Lake ──────────────────────────────────────────
+# ── 4/7  Data Lake ──────────────────────────────────────────
 def fase_datalake():
-    print("\n[4/6] Provisionando estructura del Data Lake ...")
+    encabezado(4, 7, EMOJIS["lake"], "Provisionar estructura del Data Lake")
     base = ROOT / "Mongo" / "data_lake"
     zonas = [base / "raw", base / "processed", base / "curated", base / "curated" / "spark"]
     for zona in zonas:
@@ -123,7 +164,7 @@ def fase_datalake():
     resumen("Data Lake", True, ", ".join(str(z.relative_to(ROOT)) for z in zonas) + ".")
 
 
-# ── 5/6  .env ───────────────────────────────────────────────
+# ── 5/7  .env ───────────────────────────────────────────────
 TEMPLATE_ENV = (
     "# Copia este archivo a taller-conexion-mongo/.env y rellena con tus credenciales reales de MongoDB Atlas.\n"
     "# (Es el .env que lee config.py). NUNCA subir .env a Git.\n"
@@ -146,24 +187,24 @@ def leer_env(clave):
 
 
 def fase_env():
-    print("\n[5/6] Validando archivo .env ...")
+    encabezado(5, 7, EMOJIS["env"], "Validar archivo .env (credenciales)")
     if not ENV_FILE.exists():
         ENV_TEMPLATE.write_text(TEMPLATE_ENV, encoding="utf-8")
-        print("  [ALERTA] No existe taller-conexion-mongo/.env.")
-        print(f"  [WARNING] Se generó datos de ejemplo en: {ENV_TEMPLATE.name}")
+        print(f"  {_YELLOW}{EMOJIS['alerta']} ALERTA: No existe taller-conexion-mongo/.env.{_RESET}")
+        print(f"  {_YELLOW}{EMOJIS['alerta']} WARNING: Se generó datos de ejemplo en: {ENV_TEMPLATE.name}{_RESET}")
         print("  -> Copia .env.template a taller-conexion-mongo/.env, rellena MONGO_URI y vuelve a correr.")
         resumen(".env", False, "falta el archivo con credenciales; se creó .env.template.")
         return False
     uri = leer_env("MONGO_URI") or leer_env("mongo_uri")
     if not uri:
-        print("  [ALERTA] .env existe pero MONGO_URI está vacía.")
+        print(f"  {_YELLOW}{EMOJIS['alerta']} ALERTA: .env existe pero MONGO_URI está vacía.{_RESET}")
         resumen(".env", False, "MONGO_URI vacía o sin credenciales.")
         return False
     resumen(".env", True, "presente y con MONGO_URI definida.")
     return True
 
 
-# ── 6/6  Health Check MongoDB Atlas ─────────────────────────
+# ── 6/7  Health Check MongoDB Atlas ─────────────────────────
 HEALTH_CODE = """
 import sys
 from pathlib import Path
@@ -178,7 +219,7 @@ print("OK|%s|%s" % (host, config.DB_NAME))
 
 
 def fase_health():
-    print("\n[6/6] Health Check: conexión a MongoDB Atlas ...")
+    encabezado(6, 7, EMOJIS["health"], "Health Check: conexión a MongoDB Atlas")
     if not VENV_PY.exists():
         resumen("Conexión Atlas", False, "no existe el .venv para ejecutar el ping.")
         return
@@ -199,7 +240,7 @@ def fase_health():
 
 # ── 7/7  Validación NUBE automática (Configuration as Code) ─
 def validacion_nube():
-    print("\n[7/7] Validación NUBE en código (deploy_infra_nube.ps1 -> Terraform Atlas) ...")
+    encabezado(7, 7, EMOJIS["nube"], "Validación NUBE en código (deploy_infra_nube.ps1 -> Terraform Atlas)")
     if not NUBE_SCRIPT.exists():
         resumen("Validación Nube", False, f"no existe {NUBE_SCRIPT.name}.")
         return False
@@ -221,9 +262,8 @@ def main():
     )
     args = parser.parse_args()
 
-    print("=" * 64)
-    print("iac_setup.py — Configuración como Código (Hyperflix / MongoDB Atlas)")
-    print("=" * 64)
+    banner()
+    print("  Comando: ", " ".join(sys.argv))
 
     fase_python()
     fase_venv()
@@ -234,26 +274,34 @@ def main():
         fase_health()
 
     faltas = [nombre for nombre, ok in RESULTADOS if not ok]
-    print("\n" + "=" * 64)
-    print("RESUMEN")
+    print()
+    print(f"  {_MAGENTA}╔═══════════════════════════════════════════════════════════════╗{_RESET}")
+    print(f"  {_MAGENTA}║{_RESET}  {_BOLD}{_GREEN}RESUMEN FINAL{_RESET}  ·  revisa el estado de cada fase        {_MAGENTA}║{_RESET}")
+    print(f"  {_MAGENTA}╚═══════════════════════════════════════════════════════════════╝{_RESET}")
     for nombre, ok in RESULTADOS:
-        print(f"  {'✓' if ok else '✗'}  {nombre}")
+        marca = f"{_GREEN}✔{_RESET}" if ok else f"{_RED}✘{_RESET}"
+        print(f"    {marca}  {nombre}")
+    barra_progreso(sum(1 for _, ok in RESULTADOS if ok), len(RESULTADOS) or 1)
     print("=" * 64)
 
     if not env_ok:
-        print("\nFALTAN pasos: " + ", ".join(faltas))
-        print("  Revisa el aviso del .env: crea .env.template ya generado, rellénalo y repite.")
+        print(f"\n  {_YELLOW}{EMOJIS['alerta']} FALTAN pasos:{_RESET} " + ", ".join(faltas))
+        print(f"  {_YELLOW}Revisa el aviso del .env: crea .env.template ya generado, rellénalo y repite.{_RESET}")
         sys.exit(1)
 
-    print("\n¡ENTORNO LISTO! Ejecutando de forma AUTOMÁTICA la validación de nube (Atlas)...")
+    if faltas:
+        print(f"  {_YELLOW}{EMOJIS['alerta']} Nota: falló '{', '.join(faltas)}', pero el .env es válido.{_RESET}")
+        print(f"  {_YELLOW}       Igual se valida la nube; el exit code final lo reflejará.{_RESET}")
+
+    print(f"\n  {_BOLD}{EMOJIS['ok']} ¡ENTORNO LISTO!{_RESET} Ejecutando de forma AUTOMÁTICA la validación de nube (Atlas) ...")
     if not args.sin_nube:
         if validacion_nube():
-            print("\n[OK] Validación NUBE completada. Atlas queda sincronizado con el código (IaC).")
+            print(f"\n  {_GREEN}★ Validación NUBE completada. Atlas queda sincronizado con el código (IaC). ★{_RESET}")
         else:
-            print("\n[ERROR] La validación NUBE falló. Revisa el log de deploy_infra_nube.ps1 (carpeta logs/).")
+            print(f"\n  {_RED}✖ La validación NUBE falló. Revisa el log de deploy_infra_nube.ps1 (carpeta logs/).{_RESET}")
             sys.exit(1)
     else:
-        print("  (omitida con --sin-nube). Reproduce Atlas después con:  .\\deploy_infra_nube.ps1")
+        print(f"  {_CYAN}(omitida con --sin-nube). Reproduce Atlas después con: .\\deploy_infra_nube.ps1{_RESET}")
 
     sys.exit(0 if not faltas else 1)
 

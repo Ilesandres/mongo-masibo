@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Despliegue de la infraestructura EN LA NUBE (MongoDB Atlas + Terraform) — Hyperflix IaC.
 .DESCRIPTION
@@ -22,6 +22,8 @@ param(
 $ErrorActionPreference = "Stop"
 $root = $PSScriptRoot
 $TerraformDir = Join-Path $root "infra\terraform"
+
+try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 
 if (-not $LogFile) {
     $LogFile = Join-Path $root "logs\infra_nube_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
@@ -66,7 +68,12 @@ function Find-Terraform {
     return $null
 }
 
-Escribir-Log "=== Despliegue NUBE (MongoDB Atlas + Terraform) - Hyperflix IaC ===" "Cyan"
+Escribir-Log ""
+Escribir-Log "  ╔═══════════════════════════════════════════════════════════╗" "Magenta"
+Escribir-Log "  ║   ☁️  HYPERFLIX · NUBE COMO CÓDIGO (TERRAFORM · ATLAS)  ☁️  ║" "Cyan"
+Escribir-Log "  ║   Proyecto · Clúster M0 · Usuario BD · URI de conexión    ║" "Cyan"
+Escribir-Log "  ╚═══════════════════════════════════════════════════════════╝" "Magenta"
+Escribir-Log "  Log del resultado: $LogFile" "DarkGray"
 Escribir-Log "Log: $LogFile"
 
 $terraform = Find-Terraform

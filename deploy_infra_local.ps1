@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Despliegue de la infraestructura LOCAL (Docker + MinIO) — Hyperflix IaC.
 .DESCRIPTION
@@ -27,6 +27,8 @@ param(
 
 $ErrorActionPreference = "Stop"
 $root = $PSScriptRoot
+
+try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 
 if (-not $LogFile) {
     $LogFile = Join-Path $root "logs\infra_local_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
@@ -87,7 +89,12 @@ if ($Down) {
     exit 0
 }
 
-Escribir-Log "=== Despliegue LOCAL (Docker + MinIO) - Hyperflix IaC ===" "Cyan"
+Escribir-Log ""
+Escribir-Log "  ╔═══════════════════════════════════════════════════════════╗" "Magenta"
+Escribir-Log "  ║   🐳  HYPERFLIX · INFRAESTRUCTURA LOCAL (DOCKER · MINIO) ║" "Cyan"
+Escribir-Log "  ║   Data lake · Replica Set Mongo rs0 · MinIO · venv       ║" "Cyan"
+Escribir-Log "  ╚═══════════════════════════════════════════════════════════╝" "Magenta"
+Escribir-Log "  Log del resultado: $LogFile" "DarkGray"
 Escribir-Log "Log: $LogFile"
 
 # 1. Estructura del data lake (idempotente)
