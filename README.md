@@ -41,6 +41,7 @@ Corresponde al **PARCIAL BD PRIMER CORTE** del curso IPT (Arquitectura de Datos)
 ├── deploy_infra.ps1            # Orquestador IaC: 1 comando para TODO (local + nube)
 ├── deploy_infra_local.ps1      # Script IaC de la parte LOCAL (Docker + MinIO)
 ├── deploy_infra_nube.ps1       # Script IaC de la parte NUBE (Terraform Atlas)
+├── iac_setup.py                # Config como Código: bootstrap del entorno local con 1 comando
 ├── infra/terraform/            # IaC nube: Terraform + proveedor MongoDB Atlas
 │   └── main.tf|variables.tf|outputs.tf|terraform.tfvars.example
 ├── requirements.txt
@@ -68,7 +69,7 @@ Cada entidad vive en su propio archivo dentro de `Mongo/models/` y expone una fu
 
 ## Requisitos
 
-- **Python 3.8+** (probado con 3.12 en Windows)
+- **Python ≥ 3.12** (el entorno se prepara con un solo comando: `py iac_setup.py`)
 - **MongoDB Atlas** (cluster M0/M10) con credenciales de lectura/escritura
 - **Pandas + PyArrow** para la generación de Parquet (Snappy) del data lake
 - **Matplotlib + Plotly** para el dashboard de monitoreo (PNG de 6 paneles)
@@ -298,9 +299,11 @@ El entorno se define y despliega **desde código versionado**, no a mano. Comple
 
 - **`docker-compose.infra.yml`** — muestra local con **Replica Set `rs0`** de MongoDB (3 nodos: primary, secondary, arbiter, inicializado por el job `rs_setup` del perfil `rs-init` — idempotente sobre volúmenes persistentes) + **MinIO** (`quay.io/minio/minio`, espejo S3 del data lake). Healthchecks con `mongosh ping`/`curl`; credenciales vía `.env.infra` (plantilla: `.env.infra.example`).
 - **`infra/terraform/`** — proveedor `mongodb/mongodbatlas`: crea proyecto Atlas, clúster (M0 por defecto, escalable a M10) y usuario de BD; expone `mongo_uri_srv` para `config.py`. Credenciales en `terraform.tfvars` (no versionado).
+- **`iac_setup.py`** — **Configuration as Code / bootstrap** del entorno local con UN comando: valida Python ≥ 3.12, crea/valida el `.venv`, instala `requirements.txt` (+ `pip check`), provisiona las carpetas del Data Lake, valida el `.env` de `taller-conexion-mongo/` (si falta genera `.env.template` con datos de ejemplo y alerta) y, si el `.env` es válido, hace health check `ping` a MongoDB Atlas.
 - **`deploy_infra.ps1`** — **orquestador: UN solo comando hace TODO** (local + nube) en orden. También hay scripts individuales: `deploy_infra_local.ps1` (solo Docker) y `deploy_infra_nube.ps1` (solo Terraform). Todo el resultado se muestra en la terminal **y** se guarda en `logs/infra_<fecha>.log`.
 
 ```powershell
+py iac_setup.py                # bootstrap local: python + .venv + deps + data lake + .env + health check
 Copy-Item .env.infra.example .env.infra
 .\deploy_infra.ps1             # TODO: infra local (RS + MinIO) + nube (Atlas con Terraform)
 # Manual: docker compose -f docker-compose.infra.yml up -d | up rs_setup

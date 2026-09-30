@@ -15,6 +15,7 @@ En Hyperflix esto significa que todo el entorno — **Replica Set de MongoDB, al
 | **Orquestador** (`deploy_infra.ps1`) | **Un solo comando hace TODO**: la parte local y la nube, en orden. Todo el resultado se muestra en la terminal y además queda en un log (`logs/infra_<fecha>.log`). |
 | **Script local** (`deploy_infra_local.ps1`) | Parte local: valida Docker, despliega el compose, espera el estado *healthy* y la inicialización de la réplica, aparta la estructura del Data Lake y prepara el venv. |
 | **Script nube** (`deploy_infra_nube.ps1`) | Parte nube: `terraform init` → `plan` → `apply` en MongoDB Atlas y muestra los outputs (incluida la URI). |
+| **Config como Código** (`iac_setup.py`) | Bootstrap del entorno local con UN comando: valida Python ≥ 3.12, crea/valida el `.venv`, instala dependencias, provisiona el Data Lake y hace health check a Atlas (con `.env.template` si falta el `.env`). |
 
 ## 3. Estructura de archivos
 
@@ -23,6 +24,7 @@ En Hyperflix esto significa que todo el entorno — **Replica Set de MongoDB, al
 ├── deploy_infra.ps1                # Orquestador: 1 comando para TODO (local + nube)
 ├── deploy_infra_local.ps1          # Script IaC de la parte LOCAL (Docker + MinIO)
 ├── deploy_infra_nube.ps1           # Script IaC de la parte NUBE (Terraform Atlas)
+├── iac_setup.py                    # Config como Código: bootstrap del entorno local
 ├── .env.infra.example              # Plantilla de secretos del compose (NO se suben credenciales)
 ├── logs/                           # Logs generados por los scripts (no versionado)
 └── infra/terraform/
@@ -85,9 +87,27 @@ El output `mongo_uri_srv` es la URI SRV que va en `.env` como `MONGO_URI` (leíd
 
 Toda la salida del despliegue queda registrada en `logs\infra_<fecha>.log` además de mostrarse en la terminal.
 
+### 4.4 Configuración como Código — `iac_setup.py`
+
+Bootstrap del entorno local con un solo comando (sin Docker ni Terraform):
+
+```powershell
+py iac_setup.py
+```
+
+1. **Valida Python ≥ 3.12** (muestra la versión detectada).
+2. **Valida/instala el `.venv`**: crea el entorno virtual si falta y verifica que su versión sea ≥ 3.12 (si es vieja, alerta y lo recrea).
+3. **Verifica/instala dependencias**: `pip install -r requirements.txt` + `pip check` (consistencia).
+4. **Provisiona el Data Lake**: `Mongo/data_lake/{raw,processed,curated,curated/spark}`.
+5. **Valida el `.env`** de `taller-conexion-mongo/` (el que usa `config.py`) y su `MONGO_URI`. **Si falta:** genera un `.env.template` en la raíz con datos de ejemplo y muestra WARNING/ALERTA (en ese caso no valida la conexión).
+6. **Health Check MongoDB Atlas**: `ping` con timeout corto; imprime SOLO el host de la URI (nunca credenciales).
+
+Resumen final `✓/✗` por fase y exit code 0/1.
+
 ## 5. Qué garantiza esta implementación
 
 - **Reproducibilidad:** un solo comando levanta el ambiente completo; no hay pasos manuales documentados por aparte (y cada parte tiene su propio script).
+- **Configuración como Código:** `iac_setup.py` prepara el entorno local (Python/venv/dependencias/Data Lake) y valida `.env` + conexión a Atlas, con alertas claras si falta algo (incluido generar `.env.template`).
 - **Trazabilidad:** cada ejecución genera un log en `logs/` (ruta, comando y resultado), además de la salida en terminal.
 - **Secrets por separado:** ni el compose ni el Terraform llevan credenciales hardcodeadas (`.env.infra` y `terraform.tfvars` están en `.gitignore`; solo se versionan sus plantillas).
 - **Salud verificable:** healthchecks con `mongosh ping` y espera activa del estado *healthy* y de la inicialización de la réplica antes de continuar.
