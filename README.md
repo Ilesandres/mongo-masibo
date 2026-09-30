@@ -299,11 +299,12 @@ El entorno se define y despliega **desde código versionado**, no a mano. Comple
 
 - **`docker-compose.infra.yml`** — muestra local con **Replica Set `rs0`** de MongoDB (3 nodos: primary, secondary, arbiter, inicializado por el job `rs_setup` del perfil `rs-init` — idempotente sobre volúmenes persistentes) + **MinIO** (`quay.io/minio/minio`, espejo S3 del data lake). Healthchecks con `mongosh ping`/`curl`; credenciales vía `.env.infra` (plantilla: `.env.infra.example`).
 - **`infra/terraform/`** — proveedor `mongodb/mongodbatlas`: crea proyecto Atlas, clúster (M0 por defecto, escalable a M10) y usuario de BD; expone `mongo_uri_srv` para `config.py`. Credenciales en `terraform.tfvars` (no versionado).
-- **`iac_setup.py`** — **Configuration as Code / bootstrap** del entorno local con UN comando: valida Python ≥ 3.12, crea/valida el `.venv`, instala `requirements.txt` (+ `pip check`), provisiona las carpetas del Data Lake, valida el `.env` de `taller-conexion-mongo/` (si falta genera `.env.template` con datos de ejemplo y alerta) y, si el `.env` es válido, hace health check `ping` a MongoDB Atlas.
+- **`iac_setup.py`** — **Configuration as Code / bootstrap** del entorno local con UN comando: valida Python ≥ 3.12, crea/valida el `.venv`, instala `requirements.txt` (+ `pip check`), provisiona las carpetas del Data Lake, valida el `.env` de `taller-conexion-mongo/` (si falta genera `.env.template` con datos de ejemplo y alerta) y, si el `.env` es válido, hace health check `ping` a MongoDB Atlas. **Al final, si todo está listo, ejecuta AUTOMÁTICAMENTE la validación de nube** (`deploy_infra_nube.ps1` → Terraform contra Atlas); con `--sin-nube` se omite.
 - **`deploy_infra.ps1`** — **orquestador: UN solo comando hace TODO** (local + nube) en orden. También hay scripts individuales: `deploy_infra_local.ps1` (solo Docker) y `deploy_infra_nube.ps1` (solo Terraform). Todo el resultado se muestra en la terminal **y** se guarda en `logs/infra_<fecha>.log`.
 
 ```powershell
-py iac_setup.py                # bootstrap local: python + .venv + deps + data lake + .env + health check
+py iac_setup.py                # bootstrap local + health check + VALIDA LA NUBE automáticamente (Terraform Atlas)
+py iac_setup.py --sin-nube     # solo local (omite la validación de nube)
 Copy-Item .env.infra.example .env.infra
 .\deploy_infra.ps1             # TODO: infra local (RS + MinIO) + nube (Atlas con Terraform)
 # Manual: docker compose -f docker-compose.infra.yml up -d | up rs_setup

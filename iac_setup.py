@@ -11,9 +11,14 @@ Adaptado al sistema Hyperflix (MongoDB Atlas + Data Lake). Cubre:
     5. Validar el .env (el real que carga config.py) y, si falta, generar .env.template
        con datos de ejemplo y mostrar WARNINGs/alertas.
     6. Health Check: conexión real a MongoDB Atlas (solo si el .env es válido).
+    7. (Automático) Validación NUBE en código: si el .env es válido, ejecuta
+       deploy_infra_nube.ps1 (terraform init -> plan -> apply contra MongoDB Atlas).
+       Se omite con el flag --sin-nube.
 
-Ejecutar:  py iac_setup.py        (o: python iac_setup.py)
+Ejecutar:  py iac_setup.py          (o: python iac_setup.py)
+           py iac_setup.py --sin-nube   (solo local, sin validación de nube)
 """
+import argparse
 import shutil
 import subprocess
 import sys
@@ -26,6 +31,7 @@ PY_MIN = (3, 12)
 ENV_FILE = ROOT / "taller-conexion-mongo" / ".env"
 ENV_TEMPLATE = ROOT / ".env.template"
 REQUIREMENTS = ROOT / "requirements.txt"
+NUBE_SCRIPT = ROOT / "deploy_infra_nube.ps1"
 
 VENV_DIR = ROOT / ".venv"
 VENV_PY = VENV_DIR / ("Scripts" if sys.platform == "win32" else "bin") / "python.exe"
@@ -191,8 +197,30 @@ def fase_health():
         resumen("Conexión Atlas", False, f"falló ({detalle}): revisa URI, Access List y credenciales.")
 
 
+# ── 7/7  Validación NUBE automática (Configuration as Code) ─
+def validacion_nube():
+    print("\n[7/7] Validación NUBE en código (deploy_infra_nube.ps1 -> Terraform Atlas) ...")
+    if not NUBE_SCRIPT.exists():
+        resumen("Validación Nube", False, f"no existe {NUBE_SCRIPT.name}.")
+        return False
+    codigo = subprocess.run(
+        ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass",
+         "-File", str(NUBE_SCRIPT)],
+        cwd=ROOT,
+    )
+    return codigo.returncode == 0
+
+
 # ── Ejecución ────────────────────────────────────────────────
 def main():
+    parser = argparse.ArgumentParser(description="Configuración como Código — Hyperflix / MongoDB Atlas")
+    parser.add_argument(
+        "--sin-nube",
+        action="store_true",
+        help="solo prepara el entorno local (omite la validación de nube con Terraform).",
+    )
+    args = parser.parse_args()
+
     print("=" * 64)
     print("iac_setup.py — Configuración como Código (Hyperflix / MongoDB Atlas)")
     print("=" * 64)
@@ -210,15 +238,23 @@ def main():
     print("RESUMEN")
     for nombre, ok in RESULTADOS:
         print(f"  {'✓' if ok else '✗'}  {nombre}")
-
-    if not faltas:
-        print("\n¡ENTORNO LISTO! Puedes ejecutar las fases del proyecto.")
-        print("  [Hint nube] Para reproducir Atlas en código:  .\\deploy_infra_nube.ps1")
-    else:
-        print("\nFALTAN pasos: " + ", ".join(faltas))
-        if not env_ok:
-            print("  Revisa el aviso del .env: crea .env.template ya generado, rellénalo y repite.")
     print("=" * 64)
+
+    if not env_ok:
+        print("\nFALTAN pasos: " + ", ".join(faltas))
+        print("  Revisa el aviso del .env: crea .env.template ya generado, rellénalo y repite.")
+        sys.exit(1)
+
+    print("\n¡ENTORNO LISTO! Ejecutando de forma AUTOMÁTICA la validación de nube (Atlas)...")
+    if not args.sin_nube:
+        if validacion_nube():
+            print("\n[OK] Validación NUBE completada. Atlas queda sincronizado con el código (IaC).")
+        else:
+            print("\n[ERROR] La validación NUBE falló. Revisa el log de deploy_infra_nube.ps1 (carpeta logs/).")
+            sys.exit(1)
+    else:
+        print("  (omitida con --sin-nube). Reproduce Atlas después con:  .\\deploy_infra_nube.ps1")
+
     sys.exit(0 if not faltas else 1)
 
 

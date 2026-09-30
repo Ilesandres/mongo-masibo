@@ -92,7 +92,8 @@ Toda la salida del despliegue queda registrada en `logs\infra_<fecha>.log` adem�
 Bootstrap del entorno local con un solo comando (sin Docker ni Terraform):
 
 ```powershell
-py iac_setup.py
+py iac_setup.py           # bootstrap local + health check + VALIDACIÓN DE NUBE automática (Terraform Atlas)
+py iac_setup.py --sin-nube  # solo la parte local (omite la nube)
 ```
 
 1. **Valida Python ≥ 3.12** (muestra la versión detectada).
@@ -101,13 +102,14 @@ py iac_setup.py
 4. **Provisiona el Data Lake**: `Mongo/data_lake/{raw,processed,curated,curated/spark}`.
 5. **Valida el `.env`** de `taller-conexion-mongo/` (el que usa `config.py`) y su `MONGO_URI`. **Si falta:** genera un `.env.template` en la raíz con datos de ejemplo y muestra WARNING/ALERTA (en ese caso no valida la conexión).
 6. **Health Check MongoDB Atlas**: `ping` con timeout corto; imprime SOLO el host de la URI (nunca credenciales).
+7. **(Automática) Validación NUBE en código**: si el `.env` es válido, ejecuta `deploy_infra_nube.ps1` (Terraform `init → plan → apply` contra Atlas) para dejar la nube sincronizada con el código. Se omite con `--sin-nube`.
 
 Resumen final `✓/✗` por fase y exit code 0/1.
 
 ## 5. Qué garantiza esta implementación
 
 - **Reproducibilidad:** un solo comando levanta el ambiente completo; no hay pasos manuales documentados por aparte (y cada parte tiene su propio script).
-- **Configuración como Código:** `iac_setup.py` prepara el entorno local (Python/venv/dependencias/Data Lake) y valida `.env` + conexión a Atlas, con alertas claras si falta algo (incluido generar `.env.template`).
+- **Configuración como Código:** `iac_setup.py` prepara el entorno local (Python/venv/dependencias/Data Lake) y valida `.env` + conexión a Atlas, con alertas claras si falta algo (incluido generar `.env.template`); si todo está listo, **valida la nube automáticamente** con Terraform.
 - **Trazabilidad:** cada ejecución genera un log en `logs/` (ruta, comando y resultado), además de la salida en terminal.
 - **Secrets por separado:** ni el compose ni el Terraform llevan credenciales hardcodeadas (`.env.infra` y `terraform.tfvars` están en `.gitignore`; solo se versionan sus plantillas).
 - **Salud verificable:** healthchecks con `mongosh ping` y espera activa del estado *healthy* y de la inicialización de la réplica antes de continuar.
