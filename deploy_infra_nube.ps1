@@ -41,6 +41,19 @@ function Escribir-Log {
     if (-not $Color -or $Color -eq "Gray") { Write-Host $Mensaje } else { Write-Host $Mensaje -ForegroundColor $Color }
 }
 
+# Encabezado de paso estilo "generado por IA" para cada comando de terraform.
+function Escribir-Paso {
+    param(
+        [int]$Numero,
+        [string]$Emoji,
+        [string]$Titulo
+    )
+    Escribir-Log ""
+    Escribir-Log ("  " + ("─" * 60)) "Cyan"
+    Escribir-Log ("  {0} PASO {1}/4 · {2}" -f $Emoji, $Numero, $Titulo) "Cyan"
+    Escribir-Log ("  " + ("─" * 60)) "Cyan"
+}
+
 # Ejecuta un comando nativo (terraform) de forma segura bajo
 # $ErrorActionPreference="Stop": baja la política solo durante el comando,
 # deja que el stderr fluya a la consola y devuelve el exit code real.
@@ -90,23 +103,44 @@ if (-not (Test-Path (Join-Path $TerraformDir "terraform.tfvars"))) {
 
 pushd $TerraformDir
 try {
+    Escribir-Paso 1 "🌐" "terraform init (instala el provider mongodbatlas)"
     $codigo = Invoke-Nativo "& `"$terraform`" init -input=false"
-    if ($codigo -ne 0) { Escribir-Log "[ERROR] terraform init fallo." "Red"; exit 1 }
+    if ($codigo -ne 0) { Escribir-Log "[✘ ERROR] terraform init fallo." "Red"; exit 1 }
+    Escribir-Log "  [✔] terraform init completado." "Green"
 
-    Escribir-Log "[+] Calculando plan de cambios (terraform plan)..." "Yellow"
+    Escribir-Paso 2 "📋" "terraform plan (revisar los cambios antes de aplicar)"
     $codigo = Invoke-Nativo "& `"$terraform`" plan -input=false -out=tfplan"
-    if ($codigo -ne 0) { Escribir-Log "[ERROR] terraform plan fallo." "Red"; exit 1 }
+    if ($codigo -ne 0) { Escribir-Log "[✘ ERROR] terraform plan fallo." "Red"; exit 1 }
+    Escribir-Log "  [✔] terraform plan completado." "Green"
 
-    Escribir-Log "[+] Aplicando plan (terraform apply). Clúster M0 gratuito: puede tardar varios minutos..." "Yellow"
+    Escribir-Paso 3 "🔧" "terraform apply (clúster M0 gratuito: puede tardar varios minutos)"
     $codigo = Invoke-Nativo "& `"$terraform`" apply `"tfplan`""
-    if ($codigo -ne 0) { Escribir-Log "[ERROR] terraform apply fallo." "Red"; exit 1 }
+    if ($codigo -ne 0) { Escribir-Log "[✘ ERROR] terraform apply fallo." "Red"; exit 1 }
+    Escribir-Log "  [✔] terraform apply completo." "Green"
 
-    Escribir-Log "`n[+] Outputs de Atlas (proyecto/clúster/URI):" "Green"
-    Invoke-Nativo "& `"$terraform`" output"
+    Escribir-Paso 4 "📤" "Outputs de Atlas (proyecto, clúster y URI de conexión)"
+    $outputsRaw = (Invoke-Expression "& `"$terraform`" output" | Out-String).TrimEnd()
+    Escribir-Log $outputsRaw
+    $cluster_name  = [regex]::Match($outputsRaw, 'cluster_name = "([^"]*)"').Groups[1].Value
+    $cluster_tier  = [regex]::Match($outputsRaw, 'cluster_tier = "([^"]*)"').Groups[1].Value
+    $mongo_uri_srv = [regex]::Match($outputsRaw, 'mongo_uri_srv = "([^"]*)"').Groups[1].Value
+    $project_id    = [regex]::Match($outputsRaw, 'project_id = "([^"]*)"').Groups[1].Value
+
+    Escribir-Log ""
+    Escribir-Log "  ╔═══════════════════════════════════════════════════════════════╗" "Green"
+    Escribir-Log "  ║   🎉  ATLAS LISTO · copia estos datos a tu .env  🎉           ║" "Green"
+    if ($cluster_name)  { Escribir-Log ("  ║    🗄️  Clúster  : {0}" -f $cluster_name) "Cyan" }
+    if ($cluster_tier)  { Escribir-Log ("  ║    ⚙️  Tier     : {0}" -f $cluster_tier) "Cyan" }
+    if ($project_id)    { Escribir-Log ("  ║    🌐  Proyecto : {0}" -f $project_id) "Cyan" }
+    if ($mongo_uri_srv) { Escribir-Log ("  ║    🔗  URI      : {0}" -f $mongo_uri_srv) "Cyan" }
+    Escribir-Log "  ╚═══════════════════════════════════════════════════════════════╝" "Green"
 }
 finally {
     popd
 }
 
-Escribir-Log "=== Infraestructura NUBE aplicada exitosamente ===" "Green"
+Escribir-Log ""
+Escribir-Log "  ╭────────────────────────────────────────────────────────────────────╮" "Green"
+Escribir-Log "  │   🎉  ¡INFRAESTRUCTURA NUBE APLICADA EXITOSAMENTE! 🎉             │" "Green"
+Escribir-Log "  ╰────────────────────────────────────────────────────────────────────╯" "Green"
 Escribir-Log "Para conectar la app, copia el mongo_uri_srv como MONGO_URI en tu .env (y ajusta el Access List de Atlas con tu IP)."
