@@ -30,10 +30,12 @@ Corresponde al **PARCIAL BD PRIMER CORTE** del curso IPT (Arquitectura de Datos)
 │   │   ├── generar_reproducciones_streaming.py  # Fase 7 — genera eventos en tiempo real
 │   │   ├── spark_jobs.py                  # Fase 8 — 3 Spark Jobs (PySpark) → BI
 │   │   ├── data_warehouse.py              # Fase 9 — Star Schema en MongoDB (dim + fact)
+│   │   ├── generar_catalogo.py             # Gobierno de Datos — catálogo automatizado en Excel
 │   │   └── dashboard_monitoreo.py         # Dashboard — 6 paneles de monitoreo (PNG)
 │   ├── data_lake/{raw,processed,curated}  # Zonas del data lake (no versionado)
 │   │   └── curated/spark/                 # Resultados de los Spark Jobs (listos para BI)
 │   ├── dashboards/                        # PNG generados por el dashboard (no versionado)
+│   ├── catalogo_datos/                    # Excel del catálogo de datos (no versionado)
 │   └── docs/                   # Documentación del informe
 │       └── infraestructura_como_codigo.md  # ⬅ IaC: cómo se despliega el entorno en código
 ├── config.py                   # Constantes centralizadas (lee secretos desde el .env)
@@ -266,6 +268,21 @@ python Mongo/scripts/dashboard_monitoreo.py
 6. **Resumen Ejecutivo** — cuadro tipo consola con total documentos, almacenamiento, latencia promedio, costo estimado y estado **OPERATIVO**.
 
 Requiere `matplotlib` y `plotly` (ver `requirements.txt`). En la BD real: **377.706 documentos, ~0,11 GB, promedio ~200 ms, ~$57/mes y 13 meses con datos**, generado en ~6 s.
+
+### Gobierno de Datos — Catálogo automatizado (Excel)
+
+`generar_catalogo.py` implementa el *"Data Discovery"* y el gobierno de datos: **inspecciona la base de datos real** (no inventa el modelo), aplana los documentos anidados/embebidos, detecta los índices automáticamente y exporta un **catálogo de datos en Excel** en `Mongo/catalogo_datos/Catalogo_Datos_<DB>_<fecha>.xlsx` (carpeta no versionada).
+
+```bash
+python Mongo/scripts/generar_catalogo.py
+```
+
+Genera 2 pestañas:
+
+1. **"Resumen Arquitectónico"** — inventario de todas las colecciones clasificadas por su rol (OLTP, OLAP, Data Warehouse) con su volumen real de documentos, tamaño e índices.
+2. **"Diccionario de Datos"** — tabla técnica por colección y campo: nombre (incluidos anidados como `generos[0].codigo_genero`), tipo de dato estandarizado, PK/FK, si está **indexado** y la **descripción de negocio**.
+
+Requiere `openpyxl` (ver `requirements.txt`). Conexión: reutiliza `conexion.conectar_mongodb()` y el `config.MONGO_URI`.
 
 ## Volúmenes de generación (a gran escala)
 
