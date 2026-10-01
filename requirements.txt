@@ -3,6 +3,7 @@ python-dotenv>=1.0
 faker>=18.0
 pandas>=2.2
 pyarrow>=18.0
+openpyxl>=3.1
 pyspark>=4.0
 matplotlib>=3.8
 plotly>=5.18

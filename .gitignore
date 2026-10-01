@@ -27,6 +27,9 @@ data_lake/
 *.parquet
 # PNG de los dashboards generados (no se versionan)
 Mongo/dashboards/
+# Excel del catálogo de datos (generado, no se versiona)
+Mongo/catalogo_datos/
+*.xlsx
 
 # ── IaC (secretos y estado de Terraform) ──────────────────
 infra/terraform/.terraform/
