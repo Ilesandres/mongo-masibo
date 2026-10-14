@@ -171,6 +171,14 @@ TEMPLATE_ENV = (
     "\n"
     "MONGO_URI=mongodb+srv://tu_usuario:tu_contrasena@cluster0.xxxxx.mongodb.net/?retryWrites=true&w=majority\n"
     "DB_NAME=hyperflix_BD\n"
+    "\n"
+    "# ── Data Lake: local (disco) o Amazon S3 ──────────────────\n"
+    "DATA_LAKE_BACKEND=local\n"
+    "# S3_BUCKET=abp-data-lake-tu-nombre\n"
+    "# S3_PREFIX=hyperflix\n"
+    "# AWS_REGION=us-east-1\n"
+    "# AWS_ACCESS_KEY_ID=tu_access_key_id\n"
+    "# AWS_SECRET_ACCESS_KEY=tu_secret_access_key\n"
 )
 
 

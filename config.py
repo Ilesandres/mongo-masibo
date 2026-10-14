@@ -63,6 +63,19 @@ ZONAS_DATALAKE = {
 PARQUET_ENGINE = "pyarrow"
 PARQUET_COMPRESSION = "snappy"
 
+# Backend del Data Lake: "local" (disco del PC) o "s3" (Amazon S3 / MinIO / S3-compatible).
+# Con "s3" el pipeline escribe en s3://{S3_BUCKET}/{S3_PREFIX}/{zona}/ en vez del disco.
+DATA_LAKE_BACKEND = (os.getenv("DATA_LAKE_BACKEND") or "local").strip().lower()
+
+# ── Amazon S3 (Data Lake en la nube) ───────────────────────
+S3_BUCKET = (os.getenv("S3_BUCKET") or "").strip()
+S3_PREFIX = (os.getenv("S3_PREFIX") or "").strip().strip("/")  # carpeta raíz dentro del bucket (opcional)
+S3_ENDPOINT_URL = (os.getenv("S3_ENDPOINT_URL") or "").strip()  # MinIO u otro S3-compatible; vacío = AWS real
+AWS_REGION = (os.getenv("AWS_REGION") or os.getenv("AWS_DEFAULT_REGION") or "us-east-1").strip()
+AWS_ACCESS_KEY_ID = (os.getenv("AWS_ACCESS_KEY_ID") or "").strip()
+AWS_SECRET_ACCESS_KEY = (os.getenv("AWS_SECRET_ACCESS_KEY") or "").strip()
+AWS_SESSION_TOKEN = (os.getenv("AWS_SESSION_TOKEN") or "").strip()
+
 # ── Dashboard de Monitoreo ────────────────────────────────
 CARPETA_DASHBOARD = DATA_LAKE_ROOT.parent / "dashboards"  # Mongo/dashboards
 SLA_MS = 500  # umbral "óptimo" de latencia para las consultas OLAP

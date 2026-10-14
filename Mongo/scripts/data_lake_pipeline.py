@@ -1,4 +1,17 @@
-import os
+# -*- coding: utf-8 -*-
+"""Fase 6 — Pipeline del Data Lake (RAW → PROCESSED → CURATED).
+
+Exporta MongoDB a Parquet (Snappy) en tres zonas y construye el modelo estrella
+listo para BI. El destino lo decide el ``.env`` a través de `almacenamiento`:
+
+    DATA_LAKE_BACKEND=local  ->  Mongo/data_lake/{raw,processed,curated}/
+    DATA_LAKE_BACKEND=s3     ->  s3://{S3_BUCKET}/{S3_PREFIX}/{zona}/
+
+Es decir, el mismo pipeline corre en el disco o sube los Parquet directamente
+a Amazon S3 (Data Lake real en la nube) sin cambiar el código.
+
+    python Mongo/scripts/data_lake_pipeline.py
+"""
 import sys
 import time
 from datetime import datetime
@@ -6,11 +19,13 @@ from pathlib import Path
 
 sys.stdout.reconfigure(encoding="utf-8")
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))  # raíz (config)
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # Mongo/ (almacenamiento)
 
 import pymongo
 import pandas as pd
 from bson import ObjectId
 
+import almacenamiento
 import config
 
 
@@ -20,19 +35,20 @@ def _log(mensaje):
 
 
 # ── Utilidades ─────────────────────────────────────────────
+# La lectura/escritura pasa por `almacenamiento`, que decide si el Data Lake
+# vive en el disco (local) o en la nube (s3://...) según el .env.
 def _ruta(zona, nombre):
-    return config.ZONAS_DATALAKE[zona] / f"{nombre}.parquet"
+    return almacenamiento.ruta(zona, nombre)
 
 
 def _guardar_parquet(df, zona, nombre):
-    ruta = _ruta(zona, nombre)
-    df.to_parquet(ruta, engine=config.PARQUET_ENGINE, compression=config.PARQUET_COMPRESSION)
-    _log(f"  ✅ [{zona.upper()}] {nombre}.parquet -> {ruta} ({len(df)} filas)")
-    return ruta
+    destino = almacenamiento.escribir_parquet(df, zona, nombre)
+    _log(f"  ✅ [{zona.upper()}] {nombre}.parquet -> {destino} ({len(df)} filas)")
+    return destino
 
 
 def _leer_parquet(zona, nombre):
-    return pd.read_parquet(_ruta(zona, nombre))
+    return almacenamiento.leer_parquet(zona, nombre)
 
 
 def _segmento_por_valor(valor):
@@ -45,9 +61,11 @@ def _segmento_por_valor(valor):
 
 # ── Bloque 3: estructura de zonas ──────────────────────────
 def crear_estructura_lake():
-    for zona, ruta in config.ZONAS_DATALAKE.items():
-        os.makedirs(ruta, exist_ok=True)
-        _log(f"📁 Zona '{zona}' creada/verificada en: {ruta}")
+    backend = almacenamiento.crear_estructura()
+    if backend == "s3":
+        _log(f"☁️ Data Lake en la nube (S3): s3://{config.S3_BUCKET}/{config.S3_PREFIX}".rstrip("/"))
+    for zona in config.ZONAS_DATALAKE:
+        _log(f"📁 Zona '{zona}' creada/verificada en: {almacenamiento.destino(zona)}")
 
 
 # ── Etapa RAW: copia exacta de MongoDB → Parquet ───────────
@@ -283,17 +301,10 @@ def _generar_agregados(fact, usuarios_dim, peliculas_dim):
 
 # ── Bloque 7: resumen del data lake ────────────────────────
 def mostrar_resumen_lake():
-    _log("\n--- Bloque 7. Resumen del Data Lake ---")
-    total_archivos = 0
-    total_bytes = 0
-    for zona, ruta in config.ZONAS_DATALAKE.items():
-        if not ruta.exists():
-            continue
-        archivos = [f for f in os.listdir(ruta) if f.endswith(".parquet")]
-        tamanio = sum(os.path.getsize(os.path.join(ruta, f)) for f in archivos)
-        total_archivos += len(archivos)
-        total_bytes += tamanio
-        _log(f"  {zona.upper()}: {len(archivos)} archivo(s) | {tamanio / 1024:.1f} KB")
+    _log(f"\n--- Bloque 7. Resumen del Data Lake (backend: {almacenamiento.backend()}) ---")
+    total_archivos, total_bytes, por_zona = almacenamiento.inventario()
+    for zona, (n_archivos, tamanio) in por_zona.items():
+        _log(f"  {zona.upper()}: {n_archivos} archivo(s) | {tamanio / 1024:.1f} KB")
     _log(f"  TOTAL: {total_archivos} archivos | {total_bytes / 1024:.1f} KB ({total_bytes / (1024 * 1024):.2f} MB)")
 
 

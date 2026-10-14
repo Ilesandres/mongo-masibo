@@ -1,6 +1,6 @@
 # Hyperflix — MongoDB Atlas / PyMongo + Data Lake
 
-Implementación práctica de un sistema de streaming de películas con **MongoDB Atlas + PyMongo** e integración de un **Data Lake a gran escala** (zonas RAW/PROCESSED/CURATED en Parquet). Hyperflix administra usuarios, catálogo de películas, reproducciones, suscripciones, pagos y reseñas en cinco fases, y además construye un pipeline de Data Lake que exporta y transforma toda la información para análisis y BI.
+Implementación práctica de un sistema de streaming de películas con **MongoDB Atlas + PyMongo** e integración de un **Data Lake a gran escala** (zonas RAW/PROCESSED/CURATED en Parquet, en disco local **o en Amazon S3**). Hyperflix administra usuarios, catálogo de películas, reproducciones, suscripciones, pagos y reseñas en cinco fases, y además construye un pipeline de Data Lake que exporta y transforma toda la información para análisis y BI.
 
 Corresponde al **PARCIAL BD PRIMER CORTE** del curso IPT (Arquitectura de Datos). Las guías y documentos base viven en `taller-conexion-mongo/` y **no se versionan** (ver `.gitignore`).
 
@@ -9,6 +9,7 @@ Corresponde al **PARCIAL BD PRIMER CORTE** del curso IPT (Arquitectura de Datos)
 ```
 ├── Mongo/                          # Implementación real de Hyperflix
 │   ├── conexion.py                 # Fase 1 — conexión a Atlas
+│   ├── almacenamiento.py           # Abstracción del Data Lake: local (disco) o Amazon S3
 │   ├── models/                     # MODELOS/ENTIDADES normalizadas (una por archivo)
 │   │   ├── usuario.py              #   suscriptor (plan, dirección embebida)
 │   │   ├── genero.py               #   catálogo de géneros (referenciado por película)
@@ -31,13 +32,15 @@ Corresponde al **PARCIAL BD PRIMER CORTE** del curso IPT (Arquitectura de Datos)
 │   │   ├── spark_jobs.py                  # Fase 8 — 3 Spark Jobs (PySpark) → BI
 │   │   ├── data_warehouse.py              # Fase 9 — Star Schema en MongoDB (dim + fact)
 │   │   ├── generar_catalogo.py             # Gobierno de Datos — catálogo automatizado en Excel
+│   │   ├── subir_data_lake_s3.py          # Migra el Data Lake local → Amazon S3 (boto3/s3fs)
 │   │   └── dashboard_monitoreo.py         # Dashboard — 6 paneles de monitoreo (PNG)
 │   ├── data_lake/{raw,processed,curated}  # Zonas del data lake (no versionado)
 │   │   └── curated/spark/                 # Resultados de los Spark Jobs (listos para BI)
 │   ├── dashboards/                        # PNG generados por el dashboard (no versionado)
 │   ├── catalogo_datos/                    # Excel del catálogo de datos (no versionado)
 │   └── docs/                   # Documentación del informe
-│       └── infraestructura_como_codigo.md  # ⬅ IaC: cómo se despliega el entorno en código
+│       ├── infraestructura_como_codigo.md  # ⬅ IaC: cómo se despliega el entorno en código
+│       └── data_lake_s3.md                 # ⬅ Data Lake en la nube (Amazon S3)
 ├── config.py                   # Constantes centralizadas (lee secretos desde el .env)
 ├── docker-compose.infra.yml    # IaC local: Replica Set MongoDB rs0 + MinIO
 ├── deploy_infra.ps1            # Orquestador IaC: 1 comando para TODO (local + nube)
@@ -74,6 +77,8 @@ Cada entidad vive en su propio archivo dentro de `Mongo/models/` y expone una fu
 - **Python ≥ 3.12** (el entorno se prepara con un solo comando: `py iac_setup.py`)
 - **MongoDB Atlas** (cluster M0/M10) con credenciales de lectura/escritura
 - **Pandas + PyArrow** para la generación de Parquet (Snappy) del data lake
+- **s3fs** para leer/escribir el Data Lake en Amazon S3 (u otro S3-compatible)
+- **Cuenta de AWS (opcional)** para el Data Lake en la nube (S3 Free Tier: 5 GB/12 meses)
 - **Matplotlib + Plotly** para el dashboard de monitoreo (PNG de 6 paneles)
 - **Java 11/17/21 (JVM) + `JAVA_HOME`** para Apache Spark (PySpark): `winget install EclipseAdoptium.Temurin.21.JDK`
 - **Docker Desktop** (opcional) para IaC local: Replica Set MongoDB `rs0` + MinIO (`docker-compose.infra.yml`)
@@ -97,6 +102,8 @@ pip install -r requirements.txt
 
 # 4. Credenciales: editar taller-conexion-mongo/.env (copiar de .env.example)
 #    mongo_uri=mongodb+srv://usuario:contrasena@cluster0.xxxxx.mongodb.net/?retryWrites=true&w=majority
+#    (Opcional, Data Lake en S3) DATA_LAKE_BACKEND=s3, S3_BUCKET, S3_PREFIX,
+#    AWS_REGION, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
 ```
 
 > Secreto: **solo** en `.env`. `config.py` carga `taller-conexion-mongo/.env` y expone la constante `MONGO_URI`.
@@ -125,7 +132,11 @@ python Mongo/scripts/transformar_oltp_a_olap.py
 python Mongo/scripts/benchmarking_consultas.py
 
 # Fase 6 — Pipeline de Data Lake (RAW → PROCESSED → CURATED, Parquet/Snappy)
+#          con DATA_LAKE_BACKEND=s3 escribe directo en s3://{S3_BUCKET}/...
 python Mongo/scripts/data_lake_pipeline.py
+
+# Opcional — Migrar a S3 los Parquet que ya tengas en disco (no recalcula nada)
+python Mongo/scripts/subir_data_lake_s3.py
 
 # Fase 7 — Streaming en tiempo real (ver sección abajo: 2 terminales)
 python Mongo/scripts/streaming.py                            # Terminal 1 (escucha)
@@ -310,6 +321,24 @@ Configurables en `config.py` (`NUM_*`):
 
 Resultado esperado en pantalla: recuento y tamaño por zona (RAW/PROCESSED/CURATED + total).
 
+### Data Lake en la nube (Amazon S3)
+
+El Data Lake **no está atado al disco**: `Mongo/almacenamiento.py` abstrae el destino y el pipeline escribe en el disco o en **Amazon S3** según el `.env`, con la misma línea de código (`df.to_parquet("s3://bucket/zona/archivo.parquet")` sobre `s3fs`):
+
+```ini
+# taller-conexion-mongo/.env
+DATA_LAKE_BACKEND=s3              # local (por defecto) | s3
+S3_BUCKET=abp-data-lake-andresiles
+S3_PREFIX=hyperflix              # carpeta raíz dentro del bucket (opcional)
+AWS_REGION=us-east-2             # debe coincidir con la región del bucket
+AWS_ACCESS_KEY_ID=AKIA...
+AWS_SECRET_ACCESS_KEY=...
+# AWS_SESSION_TOKEN=             # solo con credenciales temporales (STS); normalmente vacío
+# S3_ENDPOINT_URL=               # solo para MinIO/S3-compatible; para AWS va vacío
+```
+
+Con `DATA_LAKE_BACKEND=s3`, la **Fase 6** y los resultados de la **Fase 8** se suben a `s3://{S3_BUCKET}/{S3_PREFIX}/{raw,processed,curated}/`. Para migrar Parquet ya generados en disco sin recalcular: `python Mongo/scripts/subir_data_lake_s3.py`. Guía completa (bucket, política IAM, costos, MinIO): [`Mongo/docs/data_lake_s3.md`](Mongo/docs/data_lake_s3.md).
+
 ## Infraestructura como Código (IaC)
 
 El entorno se define y despliega **desde código versionado**, no a mano. Complementos de la rúbrica que cubre esta sección: script de automatización + Terraform. Detalle completo en [`Mongo/docs/infraestructura_como_codigo.md`](Mongo/docs/infraestructura_como_codigo.md).
@@ -346,4 +375,6 @@ Copy-Item .env.infra.example .env.infra
 | `.venv/`, `__pycache__/`, `data_lake/`, `*.csv`, `*.parquet` | Entorno y datos generados |
 | `infra/terraform/.terraform/`, `*.tfstate`, `*.tfvars`, `tfplan` | Estado y credenciales de Terraform |
 | `logs/` | Logs generados por los scripts de despliegue |
-| `.env.infra` | Credenciales MinIO del compose (solo versión `.example`) |
+| `Mongo/dashboards/` | PNG generados por el dashboard |
+| `Mongo/catalogo_datos/` | Excel del catálogo de datos (generado) |
+| `Mongo/data_lake/.cache_s3/` | Caché temporal al leer desde S3 con Spark |

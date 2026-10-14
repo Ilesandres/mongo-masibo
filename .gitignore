@@ -25,11 +25,12 @@ data_lake/processed/*.parquet
 data_lake/
 *.csv
 *.parquet
-# PNG de los dashboards generados (no se versionan)
 Mongo/dashboards/
 # Excel del catálogo de datos (generado, no se versiona)
 Mongo/catalogo_datos/
 *.xlsx
+# Caché temporal al leer desde S3 (no se versiona)
+Mongo/data_lake/.cache_s3/
 
 # ── IaC (secretos y estado de Terraform) ──────────────────
 infra/terraform/.terraform/

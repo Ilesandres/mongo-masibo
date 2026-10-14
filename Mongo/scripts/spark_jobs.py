@@ -19,9 +19,11 @@ Requisito previo: Java (JVM) instalado con JAVA_HOME. Instalación:
 
 Ejecución:
     python Mongo/scripts/spark_jobs.py
+
+Las salidas se escriben en `curated/spark/` del Data Lake; si el `.env` tiene
+`DATA_LAKE_BACKEND=s3`, los resultados se suben directamente a Amazon S3.
 """
 
-import glob
 import os
 import shutil
 import sys
@@ -29,19 +31,18 @@ from pathlib import Path
 
 sys.stdout.reconfigure(encoding="utf-8")
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))  # raíz (config)
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # Mongo/ (almacenamiento)
 
 import pyspark
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 
+import almacenamiento
 import config
 
 # ── Bloque 2. Configuración para Windows (antes de crear la sesión) ──
 os.environ.setdefault("PYSPARK_SUBMIT_ARGS", "--master local[*] pyspark-shell")
 os.environ.setdefault("SPARK_LOCAL_HOSTNAME", "localhost")
-
-CURATED = config.ZONAS_DATALAKE["curated"]
-SALIDA_SPARK = CURATED / "spark"
 
 
 def _verificar_java():
@@ -59,26 +60,24 @@ def _ultimo_parquet(sufijo):
 
     Evita escribir el nombre del archivo a mano: si cada día hay un snapshot
     nuevo, siempre trabaja con el último (idea del guion original con glob).
+    Funciona igual si la zona CURATED está en disco o en S3 (ver `almacenamiento`).
     """
-    coincidencias = glob.glob(str(CURATED / f"{sufijo}*.parquet"))
-    if not coincidencias:
-        raise FileNotFoundError(f"No se encontró '{sufijo}*.parquet' en {CURATED}.")
-    return max(coincidencias, key=os.path.getctime)
+    return almacenamiento.ultimo_parquet("curated", sufijo)
 
 
 def _leer_curated(spark, sufijo):
-    ruta = Path(_ultimo_parquet(sufijo)).as_uri()  # file:///C:/... evita bugs de URI en Windows
-    print(f"  📂 Leyendo: {_ultimo_parquet(sufijo)}")
+    origen = _ultimo_parquet(sufijo)
+    # Spark no lee s3:// sin los jars de Hadoop: si está en S3 lo bajamos a un
+    # caché local y le pasamos una ruta file:/// (evita bugs de URI en Windows).
+    ruta = Path(almacenamiento.materializar(origen)).as_uri()
+    print(f"  📂 Leyendo: {origen}")
     return spark.read.parquet(ruta)
 
 
 def _guardar_resultado(df_spark, nombre):
-    SALIDA_SPARK.mkdir(parents=True, exist_ok=True)
-    ruta = SALIDA_SPARK / f"{nombre}.parquet"
-    df_spark.toPandas().to_parquet(
-        ruta, engine=config.PARQUET_ENGINE, compression=config.PARQUET_COMPRESSION
-    )
-    print(f"  ✅ Guardado: {ruta} ({df_spark.count():,} filas)")
+    df_pandas = df_spark.toPandas()
+    destino = almacenamiento.escribir_parquet(df_pandas, "curated", f"spark/{nombre}")
+    print(f"  ✅ Guardado: {destino} ({len(df_pandas):,} filas)")
 
 
 def crear_sesion():
@@ -204,7 +203,7 @@ def ejecutar_jobs():
         job3_evolucion_mensual(spark)
 
         print("\n✨ Spark Jobs finalizados. Resultados listos para BI en:")
-        print(f"   {SALIDA_SPARK}")
+        print(f"   {almacenamiento.destino('curated')}spark")
     finally:
         spark.stop()
         print("\n✅ Spark detenido — memoria liberada.")
