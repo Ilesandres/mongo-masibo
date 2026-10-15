@@ -28,15 +28,15 @@ COLECCIONES_DW = ["dim_tiempo", "dim_cliente", "dim_pelicula", "fact_consumo"]
 
 # ── Volúmenes de generación masiva (a gran escala) ─────────
 NUM_GENEROS = 8
-NUM_DIRECTORES = 300
+NUM_DIRECTORES = 500
 NUM_PLANES = 3
-NUM_USUARIOS = 10_000
-NUM_PELICULAS = 2_000
-NUM_SUSCRIPCIONES = 8_000
-NUM_PAGOS = 25_000
-NUM_RESENAS = 20_000
-NUM_REPRODUCCIONES = 100_000
-BATCH_SIZE = 1_000
+NUM_USUARIOS = 150_000
+NUM_PELICULAS = 7_500
+NUM_SUSCRIPCIONES = 200_000
+NUM_PAGOS = 750_000
+NUM_RESENAS = 300_000
+NUM_REPRODUCCIONES = 6_000_000
+BATCH_SIZE = 2_000
 
 # ── Reglas de negocio / analítica ──────────────────────────
 TARIFA_POR_MINUTO = 1000
