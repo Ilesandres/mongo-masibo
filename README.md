@@ -23,9 +23,10 @@ Corresponde al **PARCIAL BD PRIMER CORTE** del curso IPT (Arquitectura de Datos)
 │   ├── scripts/
 │   │   ├── limpiar_bd.py                  # Reinicio controlado de la base
 │   │   ├── crear_estructura.py            # Fase 2 — colecciones + índices + ejemplo
-│   │   ├── generar_datos_masivos.py       # Fase 3 — generación a gran escala (~170k docs)
+│   │   ├── generar_datos_masivos.py       # Fase 3 — generación a gran escala en MongoDB
 │   │   ├── transformar_oltp_a_olap.py     # Fase 4 — ETL → reproducciones_analiticas
 │   │   ├── data_lake_pipeline.py          # Fase 6 — pipeline RAW/PROCESSED/CURATED
+│   │   ├── generar_data_lake_sintetico.py # Alternativa SIN MongoDB: Data Lake directo a disco/S3 (~1 GB)
 │   │   ├── benchmarking_consultas.py      # Fase 5 — índices + 10 consultas OLAP
 │   │   ├── streaming.py                   # Fase 7 — Change Streams (escucha = Kafka Consumer)
 │   │   ├── generar_reproducciones_streaming.py  # Fase 7 — genera eventos en tiempo real
@@ -85,7 +86,7 @@ Cada entidad vive en su propio archivo dentro de `Mongo/models/` y expone una fu
 - **Terraform ≥ 1.5** (opcional) para IaC en la nube con el proveedor `mongodb/mongodbatlas`
 - Opcional: MongoDB Compass para inspección visual
 
-Hasta 50.000 reproducciones el cluster gratuito M0 responde bien; con 100.000+ toma **varios minutos** en la fase de generación y exportación RAW.
+Hasta 50.000 reproducciones el cluster gratuito M0 responde bien; con 100.000+ toma **varios minutos** en la fase de generación y exportación RAW. **M0 almacena como máximo ~512 MB**: para volúmenes mayores escala el clúster (M2/M5/M10) o usa `generar_data_lake_sintetico.py`, que genera el Data Lake sin escribir en MongoDB.
 
 ## Configuración
 
@@ -137,6 +138,11 @@ python Mongo/scripts/data_lake_pipeline.py
 
 # Opcional — Migrar a S3 los Parquet que ya tengas en disco (no recalcula nada)
 python Mongo/scripts/subir_data_lake_s3.py
+
+# Alternativa a las Fases 3-6 cuando el clúster M0 está lleno (512 MB):
+# genera el Data Lake COMPLETO (~1 GB) sin escribir en MongoDB, por lotes,
+# directo al disco o a S3 (misma estructura y datos que data_lake_pipeline.py).
+python Mongo/scripts/generar_data_lake_sintetico.py --reproducciones 5000000
 
 # Fase 7 — Streaming en tiempo real (ver sección abajo: 2 terminales)
 python Mongo/scripts/streaming.py                            # Terminal 1 (escucha)
@@ -297,19 +303,21 @@ Requiere `openpyxl` (ver `requirements.txt`). Conexión: reutiliza `conexion.con
 
 ## Volúmenes de generación (a gran escala)
 
-Configurables en `config.py` (`NUM_*`):
+Configurables en `config.py` (`NUM_*`). Son los valores por defecto de `generar_datos_masivos.py` **y** de `generar_data_lake_sintetico.py`:
 
 | Entidad | Cantidad |
 | --- | --- |
 | Géneros | 8 |
-| Directores | 300 |
+| Directores | 500 |
 | Planes | 3 |
-| Usuarios | 10.000 |
-| Películas | 2.000 |
-| Suscripciones | 8.000 |
-| Pagos | 25.000 |
-| Reseñas | 20.000 |
-| Reproducciones | 100.000 |
+| Usuarios | 120.000 |
+| Películas | 6.000 |
+| Suscripciones | 180.000 |
+| Pagos | 600.000 |
+| Reseñas | 250.000 |
+| Reproducciones | 5.000.000 |
+
+> ⚠️ **MongoDB Atlas M0** (gratuito) tiene un límite de **512 MB**. Con estos volúmenes la Fase 3 falla con `AtlasError code 8000: you are over your space quota`. Para ese clúster baja los `NUM_*` (p. ej. ≤1M reproducciones) **o** usa `generar_data_lake_sintetico.py`, que no escribe en MongoDB (ver abajo).
 
 ## Data Lake (Fase 6)
 
@@ -320,6 +328,45 @@ Configurables en `config.py` (`NUM_*`):
 - **Zona CURATED** — modelo estrella listo para BI: `dim_usuario`, `dim_pelicula`, `dim_fecha`, `fact_reproduccion` + agregados `analitica_temporal`, `analitica_contenido`, `analitica_cliente`, `analitica_pagos` y `analitica_resenas`.
 
 Resultado esperado en pantalla: recuento y tamaño por zona (RAW/PROCESSED/CURATED + total).
+
+### Generación del Data Lake sin MongoDB (sortear la cuota de M0)
+
+`generar_data_lake_sintetico.py` construye **el Data Lake completo sin tocar MongoDB**. Nace del límite de **512 MB** del clúster gratuito de Atlas: con millones de reproducciones la Fase 3 se detiene con `AtlasError code 8000` y ni siquiera la Fase 6 puede continuar (todo write queda bloqueado).
+
+Cómo lo resuelve:
+
+1. **Reutiliza `Mongo/models/`**: genera exactamente los mismos documentos del dominio Hyperflix (misma semántica, mismos códigos, mismas relaciones y reglas de negocio).
+2. **Procesa por lotes en memoria**: nunca guarda millones de documentos; escribe cada lote con `pyarrow.parquet.ParquetWriter` en un **archivo temporal**.
+3. **Publica al final de cada archivo**: `Mongo/almacenamiento.publicar_parquet()` lo mueve al disco local o lo sube a **S3** (según `DATA_LAKE_BACKEND`), sin dejar basura.
+4. **Respeta la estructura de la Fase 6**: produce las zonas RAW, PROCESSED y CURATED con los **mismos nombres de archivo y columnas** que `data_lake_pipeline.py`, incluida la vista OLAP `reproducciones_analiticas` de la Fase 4.
+
+```bash
+# Data Lake completo con los volúmenes de config.py (≈1 GB con 5M reproducciones)
+python Mongo/scripts/generar_data_lake_sintetico.py
+
+# Solo la zona RAW (más rápido; ideal para revisar formatos)
+python Mongo/scripts/generar_data_lake_sintetico.py --solo-raw
+
+# Sobrescribir volúmenes concretos
+python Mongo/scripts/generar_data_lake_sintetico.py \
+  --reproducciones 8000000 --usuarios 250000 --peliculas 15000 --batch-size 2500
+
+# Forzar disco local aunque el .env apunte a S3 (pruebas)
+#   PowerShell:  $env:DATA_LAKE_BACKEND="local"
+#   Linux/Mac:   DATA_LAKE_BACKEND=local python Mongo/scripts/generar_data_lake_sintetico.py
+```
+
+| Argumento | Por defecto | Descripción |
+| --- | --- | --- |
+| `--reproducciones` | `config.NUM_REPRODUCCIONES` | Hechos a generar (el mayor aporte de tamaño) |
+| `--usuarios`, `--peliculas`, `--suscripciones`, `--pagos`, `--resenas` | `config.NUM_*` | Volúmenes del resto de entidades |
+| `--batch-size` | `config.BATCH_SIZE` | Filas por lote en memoria |
+| `--semilla` | `42` | Semilla de aleatoriedad |
+| `--solo-raw` | desactivado | Omite PROCESSED/CURATED |
+
+Referencia de tamaño (Parquet Snappy, RAW+PROCESSED+CURATED): **5M reproducciones ≈ 1 GB**. El costo está dominado por `reproducciones`, `reproducciones_analiticas`, `reproducciones_procesadas` y `fact_reproduccion`; los catálogos y agregados ocupan pocos MB. Al terminar imprime el inventario por zona (mismo resumen de la Fase 6).
+
+> Con este script no hace falta `MONGO_URI` ni que el clúster esté arriba: sirve para generar el Data Lake de ~1 GB y luego correr Spark (`spark_jobs.py`), el benchmark o el dashboard sobre esos Parquet.
 
 ### Data Lake en la nube (Amazon S3)
 

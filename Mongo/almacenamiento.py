@@ -27,6 +27,7 @@ Variables del ``.env`` que usa:
 import glob
 import os
 import re
+import shutil
 from pathlib import Path
 
 import pandas as pd
@@ -137,6 +138,25 @@ def escribir_parquet(df, zona, nombre):
             engine=config.PARQUET_ENGINE,
             compression=config.PARQUET_COMPRESSION,
         )
+    return destino_archivo
+
+
+def publicar_parquet(ruta_local, zona, nombre):
+    """Publica en la zona un Parquet que ya está escrito en un archivo local.
+
+    Sirve para generadores que escriben por lotes en un temporal (``ParquetWriter``)
+    y solo al final mueven/suben el archivo completo, sin cargar todo en memoria.
+    Devuelve la ruta/URI final.
+    """
+    if es_s3():
+        _verificar_s3()
+    destino_archivo = ruta(zona, nombre)
+    if es_s3():
+        _s3fs().put(str(ruta_local), destino_archivo)
+        Path(ruta_local).unlink(missing_ok=True)
+    else:
+        Path(destino_archivo).parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(ruta_local), destino_archivo)
     return destino_archivo
 
 
