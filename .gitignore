@@ -3,6 +3,9 @@
 .env.*
 !.env.example
 !.env.infra.example
+# Credenciales de cloud (service account de BigQuery, etc.)
+*-credentials.json
+service_account*.json
 
 # ── Documentos guía (contexto base, NO se publican) ──────
 taller-conexion-mongo/

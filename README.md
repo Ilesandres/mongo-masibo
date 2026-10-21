@@ -10,6 +10,7 @@ Corresponde al **PARCIAL BD PRIMER CORTE** del curso IPT (Arquitectura de Datos)
 ├── Mongo/                          # Implementación real de Hyperflix
 │   ├── conexion.py                 # Fase 1 — conexión a Atlas
 │   ├── almacenamiento.py           # Abstracción del Data Lake: local (disco) o Amazon S3
+│   ├── dw_cloud.py                 # Abstracción del DW en la nube: BigQuery / Snowflake (Fase 10)
 │   ├── models/                     # MODELOS/ENTIDADES normalizadas (una por archivo)
 │   │   ├── usuario.py              #   suscriptor (plan, dirección embebida)
 │   │   ├── genero.py               #   catálogo de géneros (referenciado por película)
@@ -32,6 +33,7 @@ Corresponde al **PARCIAL BD PRIMER CORTE** del curso IPT (Arquitectura de Datos)
 │   │   ├── generar_reproducciones_streaming.py  # Fase 7 — genera eventos en tiempo real
 │   │   ├── spark_jobs.py                  # Fase 8 — 3 Spark Jobs (PySpark) → BI
 │   │   ├── data_warehouse.py              # Fase 9 — Star Schema en MongoDB (dim + fact)
+│   │   ├── data_warehouse_cloud.py        # Fase 10 — ETL Data Lake → DW en la nube (BigQuery/Snowflake)
 │   │   ├── generar_catalogo.py             # Gobierno de Datos — catálogo automatizado en Excel
 │   │   ├── subir_data_lake_s3.py          # Migra el Data Lake local → Amazon S3 (boto3/s3fs)
 │   │   └── dashboard_monitoreo.py         # Dashboard — 6 paneles de monitoreo (PNG)
@@ -41,7 +43,8 @@ Corresponde al **PARCIAL BD PRIMER CORTE** del curso IPT (Arquitectura de Datos)
 │   ├── catalogo_datos/                    # Excel del catálogo de datos (no versionado)
 │   └── docs/                   # Documentación del informe
 │       ├── infraestructura_como_codigo.md  # ⬅ IaC: cómo se despliega el entorno en código
-│       └── data_lake_s3.md                 # ⬅ Data Lake en la nube (Amazon S3)
+│       ├── data_lake_s3.md                 # ⬅ Data Lake en la nube (Amazon S3)
+│       └── data_warehouse_cloud.md         # ⬅ Fase 10: DW en la nube (BigQuery/Snowflake)
 ├── config.py                   # Constantes centralizadas (lee secretos desde el .env)
 ├── docker-compose.infra.yml    # IaC local: Replica Set MongoDB rs0 + MinIO
 ├── deploy_infra.ps1            # Orquestador IaC: 1 comando para TODO (local + nube)
@@ -51,6 +54,7 @@ Corresponde al **PARCIAL BD PRIMER CORTE** del curso IPT (Arquitectura de Datos)
 ├── infra/terraform/            # IaC nube: Terraform + proveedor MongoDB Atlas
 │   └── main.tf|variables.tf|outputs.tf|terraform.tfvars.example
 ├── requirements.txt
+├── requirements-dw.txt           # Dependencias OPCIONALES del DW en la nube (Fase 10)
 ├── .env.example                # Plantilla de secretos
 ├── .env.infra.example          # Plantilla de secretos del compose (IaC local)
 └── taller-conexion-mongo/      # Guías (contexto, NO se sube a Git)
@@ -80,6 +84,7 @@ Cada entidad vive en su propio archivo dentro de `Mongo/models/` y expone una fu
 - **Pandas + PyArrow** para la generación de Parquet (Snappy) del data lake
 - **s3fs** para leer/escribir el Data Lake en Amazon S3 (u otro S3-compatible)
 - **Cuenta de AWS (opcional)** para el Data Lake en la nube (S3 Free Tier: 5 GB/12 meses)
+- **Google Cloud (opcional)** para el Data Warehouse en la nube (Fase 10): BigQuery **Sandbox** gratis **sin tarjeta de crédito**; dependencias aparte con `pip install -r requirements-dw.txt`
 - **Matplotlib + Plotly** para el dashboard de monitoreo (PNG de 6 paneles)
 - **Java 11/17/21 (JVM) + `JAVA_HOME`** para Apache Spark (PySpark): `winget install EclipseAdoptium.Temurin.21.JDK`
 - **Docker Desktop** (opcional) para IaC local: Replica Set MongoDB `rs0` + MinIO (`docker-compose.infra.yml`)
@@ -154,6 +159,14 @@ python Mongo/scripts/spark_jobs.py
 # Fase 9 — Data Warehouse (Modelo Estrella) en MongoDB: dim_tiempo, dim_cliente,
 #          dim_pelicula y fact_consumo a partir de reproducciones_analiticas
 python Mongo/scripts/data_warehouse.py
+
+# Fase 10 — Data Warehouse EN LA NUBE (Google BigQuery / Snowflake): lee la zona
+#           CURATED del Data Lake y carga las MISMAS 4 tablas de la Fase 9 allá.
+#           Requiere DW_BACKEND=bigquery|snowflake en el .env (con "none" solo avisa).
+python Mongo/scripts/data_warehouse_cloud.py --solo-validar   # valida el ETL SIN tocar la nube
+python Mongo/scripts/data_warehouse_cloud.py --limite 1000    # smoke test: 1.000 filas
+python Mongo/scripts/data_warehouse_cloud.py                  # carga completa (replace, idempotente)
+python Mongo/scripts/data_warehouse_cloud.py --modo append    # carga incremental
 
 # Dashboard de Monitoreo — genera PNG con 6 paneles (documentos, rendimiento,
 #                          costos, tendencia mensual, almacenamiento y resumen)
@@ -268,6 +281,69 @@ python Mongo/scripts/data_warehouse.py
 ```
 
 La corrida completa deja estas colecciones en `HYPERFLIX-BD`: `generos`, `directores`, `planes`, `usuarios`, `peliculas`, `suscripciones`, `pagos`, `resenas`, `reproducciones`, `reproducciones_analiticas` y las 4 del Data Warehouse (`dim_*` y `fact_consumo`). La Fase 4 conserva el `_id` de cada reproducción y usa `$merge` con `whenMatched: replace`, por lo que puede repetirse sin duplicar datos analíticos. La Fase 6 es idempotente: sobrescribe los archivos `.parquet` de cada zona.
+
+### Fase 10 — Data Warehouse en la nube (Google BigQuery / Snowflake)
+
+`data_warehouse_cloud.py` lleva el modelo estrella **fuera de MongoDB**, a un Data Warehouse real (OLAP). Es la separación clásica de la arquitectura moderna: **MongoDB escribe rápido (OLTP)**, **el DW de la nube lee y analiza rápido (OLAP)**, y el **Data Lake es el puente** entre ambos. La Fase 9 **no se toca**: queda como prototipo local y como línea base para comparar.
+
+```
+MongoDB Atlas (OLTP) ──▶ Data Lake Parquet (Fases 6/8) ──▶ Data Warehouse en la nube (Fase 10)
+    Fases 1-5, 7              disco o S3                      dim_tiempo / dim_cliente
+    Fase 9 = prototipo                                        dim_pelicula / fact_consumo
+    del DW en Mongo                                           + PARTITION + CLUSTER
+                                                                       │
+                                                                       ▼
+                                                          Looker Studio / SQL / benchmark
+```
+
+**Principio de diseño: integración aditiva (no rompe nada).** El destino lo decide `DW_BACKEND` en el `.env`:
+
+| `DW_BACKEND` | Comportamiento |
+| --- | --- |
+| `none` (**por defecto**) | Capa apagada: el proyecto funciona **exactamente igual que siempre**, sin librerías ni credenciales nuevas |
+| `bigquery` | Google BigQuery — **Sandbox gratuita, sin tarjeta** (10 GB storage + 1 TB de consultas/mes) |
+| `snowflake` | Snowflake — Free Trial 30 días con USD 400 de crédito (ruta alternativa, no probada aún) |
+
+```ini
+# taller-conexion-mongo/.env  (Fase 10)
+DW_BACKEND=bigquery
+BQ_PROJECT=smart-grin-479602-u6     # = project_id (NO el nombre visible) del proyecto GCP
+BQ_DATASET=hyperflix
+BQ_LOCATION=US
+BQ_MAX_BYTES_BILLED=1073741824      # guardia de costo: 1 GB máx. por consulta
+GOOGLE_APPLICATION_CREDENTIALS=C:/.../bigquery-credentials.json   # JSON de la service account (gitignored)
+```
+
+La dependencia es **opcional** y vive fuera de `requirements.txt` (`pip install -r requirements-dw.txt`), de modo que una instalación normal no cambia. El ETL **solo lee** el Data Lake: **nunca escribe en MongoDB**.
+
+**Mapeo CURATED → DW (mismos nombres que la Fase 9):**
+
+| Zona CURATED (Fase 6) | Tabla en el DW | Transformación |
+| --- | --- | --- |
+| `fact_reproduccion` | `fact_consumo` | `usuario_id → cliente_id`, `fecha_id` (DATE) y claves sustitutas |
+| `dim_fecha` | `dim_tiempo` | + `fin_semana` |
+| `dim_usuario` | `dim_cliente` | + `segmento` (regla `config.SEGMENTO_*`) y métricas de gasto/minutos |
+| `dim_pelicula` | `dim_pelicula` | + reproducciones, minutos e ingresos totales |
+
+**Modelo físico (rúbrica de particionamiento):** `fact_consumo` se carga con **partición diaria + clustering** (`fecha_id, cliente_id, pelicula_id, dispositivo`). Detectación automática de **sandbox** (`DW_PARTICION_MODO=auto`): sin facturación, BigQuery obliga a que tablas/particiones **expiren en ≤60 días**, así que se particiona por **fecha de ingestión** (los 60 días corran desde la carga y no desde la fecha del dato, que se queda en el *clustering*); con facturación habilitada se particiona por `fecha_id`. ⚠️ Por eso, en sandbox, hay que **recargar el DW cada ≤60 días** (el ETL es idempotente).
+
+```bash
+pip install -r requirements-dw.txt                       # solo la primera vez (opcional)
+python Mongo/scripts/data_warehouse_cloud.py --solo-validar   # ETL completo SIN nube (sin credenciales)
+python Mongo/scripts/data_warehouse_cloud.py --limite 1000    # smoke test: 1.000 filas
+python Mongo/scripts/data_warehouse_cloud.py                  # carga completa (idempotente)
+python Mongo/scripts/data_warehouse_cloud.py --modo append    # incremental
+```
+
+| Argumento | Por defecto | Descripción |
+| --- | --- | --- |
+| `--modo {replace,append}` | `replace` | `replace` sobrescribe las 4 tablas (idempotente, como el `$merge` de la Fase 4); `append` agrega filas |
+| `--limite N` | sin límite | recorta el hecho a N filas para la primera prueba |
+| `--solo-validar` | desactivado | lee y transforma el Data Lake sin conexión a la nube |
+
+Guía completa (elección BigQuery vs Snowflake, service account, costos, troubleshooting): [`Mongo/docs/data_warehouse_cloud.md`](Mongo/docs/data_warehouse_cloud.md).
+
+> 🔎 **Sandbox ≠ error de pagos.** Si ves *"Billing has not been enabled for this project / expiration must be less than 60 days while in sandbox mode"* no fallan los datos ni `pagos`: es la **regla del sandbox** de Google (proyecto sin tarjeta), que fuerza expiraciones de 60 días. El ETL la detecta y se adapta (partición por ingestación). Detalle y más troubleshooting en la guía.
 
 ### Dashboard de Monitoreo (6 paneles)
 
@@ -419,6 +495,7 @@ Copy-Item .env.infra.example .env.infra
 | `taller-conexion-mongo/` y `*.docx` | Documentos guía / contexto base |
 | `agents/` | Memoria interna de trabajo (opencode) |
 | `.env` y `.env.*` | Secretos (solo se versiona `.env.example`) |
+| `*-credentials.json` (p. ej. `bigquery-credentials.json`) | Service account de BigQuery (clave privada) |
 | `.venv/`, `__pycache__/`, `data_lake/`, `*.csv`, `*.parquet` | Entorno y datos generados |
 | `infra/terraform/.terraform/`, `*.tfstate`, `*.tfvars`, `tfplan` | Estado y credenciales de Terraform |
 | `logs/` | Logs generados por los scripts de despliegue |
