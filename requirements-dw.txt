@@ -1,0 +1,13 @@
+# ── Dependencias OPCIONALES: Data Warehouse en la nube (Fase 10) ──
+# A propósito NO están en requirements.txt: sin ellas el proyecto funciona
+# igual que siempre (la capa DW queda apagada con DW_BACKEND=none).
+#
+#   pip install -r requirements-dw.txt
+#
+# Requerida si DW_BACKEND=bigquery (Sandbox gratuita de Google, sin tarjeta):
+google-cloud-bigquery>=3.25.0
+db-dtypes>=1.2.0
+# pyarrow y pandas ya vienen en requirements.txt (las usa el loader de BigQuery).
+
+# ── Alternativa: DW_BACKEND=snowflake (Free Trial 30 días / USD 400) ──
+# snowflake-connector-python[pandas]>=3.6

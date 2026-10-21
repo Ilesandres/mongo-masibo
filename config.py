@@ -5,6 +5,15 @@ from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).parent / "taller-conexion-mongo" / ".env")
 
+
+def _entero(valor, por_defecto):
+    """Convierte un valor de .env a int de forma segura (basura → por defecto)."""
+    try:
+        return int(valor)
+    except (TypeError, ValueError):
+        return por_defecto
+
+
 MONGO_URI = os.getenv("MONGO_URI") or os.getenv("mongo_uri")
 DB_NAME = os.getenv("DB_NAME") or os.getenv("db_name") or "hyperflix_BD"
 
@@ -75,6 +84,49 @@ AWS_REGION = (os.getenv("AWS_REGION") or os.getenv("AWS_DEFAULT_REGION") or "us-
 AWS_ACCESS_KEY_ID = (os.getenv("AWS_ACCESS_KEY_ID") or "").strip()
 AWS_SECRET_ACCESS_KEY = (os.getenv("AWS_SECRET_ACCESS_KEY") or "").strip()
 AWS_SESSION_TOKEN = (os.getenv("AWS_SESSION_TOKEN") or "").strip()
+
+# ── Data Warehouse en la nube (Fase 10) ────────────────────
+# "none" (por defecto) = capa APAGADA: el proyecto se comporta igual que siempre.
+# "bigquery"           = Google BigQuery (Sandbox gratuita, sin tarjeta de crédito).
+# "snowflake"          = Snowflake (Free Trial 30 días con USD 400 de crédito).
+DW_BACKEND = (os.getenv("DW_BACKEND") or "none").strip().lower()
+
+# Google BigQuery
+BQ_PROJECT = (os.getenv("BQ_PROJECT") or "").strip()          # proyecto GCP (obligatorio con bigquery)
+BQ_DATASET = (os.getenv("BQ_DATASET") or "hyperflix").strip()  # dataset dentro del proyecto
+BQ_LOCATION = (os.getenv("BQ_LOCATION") or "US").strip()       # ubicación del dataset (US | US-EAST1 | ...)
+BQ_MAX_BYTES_BILLED = _entero(os.getenv("BQ_MAX_BYTES_BILLED"), 0)  # tope por consulta (0 = sin tope)
+# Ruta al JSON de la service account (si está vacía se usan las ADC de gcloud)
+GOOGLE_APPLICATION_CREDENTIALS = (os.getenv("GOOGLE_APPLICATION_CREDENTIALS") or "").strip()
+
+# Snowflake (alternativa a BigQuery; DW_BACKEND=snowflake)
+SNOWFLAKE_ACCOUNT = (os.getenv("SNOWFLAKE_ACCOUNT") or "").strip()
+SNOWFLAKE_USER = (os.getenv("SNOWFLAKE_USER") or "").strip()
+SNOWFLAKE_PASSWORD = (os.getenv("SNOWFLAKE_PASSWORD") or "").strip()
+SNOWFLAKE_WAREHOUSE = (os.getenv("SNOWFLAKE_WAREHOUSE") or "COMPUTE_WH").strip()
+SNOWFLAKE_DATABASE = (os.getenv("SNOWFLAKE_DATABASE") or "HYPERFLIX_DW").strip()
+SNOWFLAKE_SCHEMA = (os.getenv("SNOWFLAKE_SCHEMA") or "PUBLIC").strip()
+SNOWFLAKE_ROLE = (os.getenv("SNOWFLAKE_ROLE") or "").strip()
+
+# Mismo esquema estrella que la Fase 9 (data_warehouse.py); la fuente es la
+# zona CURATED del Data Lake (fact_reproduccion + dims), renombrada a las
+# tablas "oficiales" del DW para poder comparar Mongo vs. nube uno a uno.
+TABLAS_DW_NUBE = {
+    "fact_reproduccion": "fact_consumo",
+    "dim_usuario": "dim_cliente",
+    "dim_fecha": "dim_tiempo",
+    "dim_pelicula": "dim_pelicula",
+}
+# Particionamiento y clustering de la tabla de hechos en el DW (rúbrica)
+DW_PARTICION = "fecha_id"                                    # columna DATE que BigQuery usa de partición
+DW_CLUSTER = ["cliente_id", "pelicula_id", "dispositivo"]    # columnas de clustering
+# Cómo se particiona fact_consumo en la nube:
+#   "auto"    (por defecto) = sandbox → por INGESTA; con facturación → por fecha de negocio
+#   "ingesta" = por fecha de carga (segura en Sandbox: la retención de 60 días corre desde la carga)
+#   "fecha"   = por fecha de negocio (DW_PARTICION); requiere proyecto con facturación
+# En SANDBOX BigQuery obliga a expirar en <=60 días: si la partición es la fecha de
+# negocio, las particiones antiguas desaparecen apenas se cargan.
+DW_PARTICION_MODO = (os.getenv("DW_PARTICION_MODO") or "auto").strip().lower()
 
 # ── Dashboard de Monitoreo ────────────────────────────────
 CARPETA_DASHBOARD = DATA_LAKE_ROOT.parent / "dashboards"  # Mongo/dashboards
