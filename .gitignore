@@ -41,6 +41,9 @@ infra/terraform/*.tfstate
 infra/terraform/*.tfstate.*
 infra/terraform/crash.log
 infra/terraform/tfplan
+# ── Pruebas (pytest / CI) ────────────────────────────────
+.pytest_cache/
+reporte-pruebas.xml
 *.tfvars
 .env.infra
 

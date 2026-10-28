@@ -1,0 +1,8 @@
+# ── Dependencias de DESARROLLO / CI (pruebas automáticas) ──
+# Las usa el pipeline de GitHub Actions (.github/workflows/deploy.yml) y
+# cualquier estudiante que quiera correr las pruebas en su PC:
+#
+#   pip install -r requirements.txt -r requirements-dev.txt
+#   python -m pytest
+#
+pytest>=8.0
