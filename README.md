@@ -501,7 +501,7 @@ Cada `git push` o pull request a `main` dispara [`.github/workflows/deploy.yml`]
 3. **📋 Terraform plan** contra MongoDB Atlas, con el estado remoto en S3. Se resume en la pestaña *Summary*.
 4. **🚀 Desplegar (`terraform apply`):** solo en push a `main` y tras la aprobación manual del environment `produccion`.
 
-Los pasos 3 y 4 se activan al definir la variable del repositorio `TF_STATE_BUCKET`. Antes hay que migrar el estado local de Terraform a S3 y cargar los secrets de Atlas y AWS. Configuración paso a paso: [`Mongo/docs/cicd_dataops.md`](Mongo/docs/cicd_dataops.md).
+Los pasos 3 y 4 se activan al crear el secret del repositorio `TF_STATE_BUCKET` (toda la configuración se lee de *Secrets*). Antes hay que migrar el estado local de Terraform a S3 y cargar los secrets de Atlas y AWS. Configuración paso a paso: [`Mongo/docs/cicd_dataops.md`](Mongo/docs/cicd_dataops.md).
 
 ```powershell
 pip install -r requirements-dev.txt   # solo la primera vez

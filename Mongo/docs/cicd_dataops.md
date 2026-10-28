@@ -27,7 +27,7 @@ Archivo: [`.github/workflows/deploy.yml`](../../.github/workflows/deploy.yml)
 🧪 Pruebas Python   🔎 Terraform fmt + validate     ← CI (siempre, sin credenciales)
    └────────┬─────────┘
             ▼
-     📋 Terraform plan                              ← solo si existe TF_STATE_BUCKET
+     📋 Terraform plan                              ← solo si existe el secret TF_STATE_BUCKET
             │   (resumen del plan en la pestaña Summary)
             ▼
      🚀 Desplegar (terraform apply)                 ← solo push a main
@@ -40,11 +40,12 @@ Archivo: [`.github/workflows/deploy.yml`](../../.github/workflows/deploy.yml)
 | --- | --- | --- |
 | `pruebas-python` | push y PR | Instala `requirements.txt` + `requirements-dev.txt`, compila todos los scripts (`compileall`) y corre `pytest`. Publica `reporte-pruebas.xml` como artefacto. |
 | `terraform-validar` | push y PR | `terraform fmt -check`, `init -backend=false` y `validate`. No necesita credenciales. |
-| `terraform-plan` | push y PR, **si** existe la variable `TF_STATE_BUCKET` | Configura el estado remoto en S3, ejecuta `terraform plan -detailed-exitcode` y lo resume en el *Summary* del run. |
+| `nube-configurada` | push y PR | Revisa si existe el secret `TF_STATE_BUCKET` (GitHub no permite usar `secrets` en el `if:` de un job) y deja `activo=true/false`. |
+| `terraform-plan` | push y PR, **si** `nube-configurada` dio `activo=true` | Configura el estado remoto en S3, ejecuta `terraform plan -detailed-exitcode` y lo resume en el *Summary* del run. |
 | `desplegar` | solo **push a `main`** + aprobación | Vuelve a planear y ejecuta `terraform apply`; muestra los outputs (proyecto, clúster, tier). |
 
 **Seguridad por diseño:**
-- Sin `TF_STATE_BUCKET`, el pipeline hace solo CI (pruebas + validación) y **nunca toca la nube**.
+- Sin el secret `TF_STATE_BUCKET`, el pipeline hace solo CI (pruebas + validación) y **nunca toca la nube**.
 - Las pruebas fuerzan `DATA_LAKE_BACKEND=local` y `DW_BACKEND=none`: no usan S3, BigQuery ni MongoDB.
 - Los secretos viven en **GitHub Secrets**, nunca en el repositorio.
 - `permissions: contents: read` (mínimo privilegio) y `concurrency` para que dos despliegues no choquen sobre el mismo estado.
@@ -106,9 +107,9 @@ Remove-Item backend_override.tf    # el PC vuelve a usar su estado local
 | `ATLAS_DB_PASSWORD` | `db_password` |
 | `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | Credenciales IAM con acceso al bucket del estado |
 
-**Paso 3 — Variables** (*misma pantalla → Variables*):
+**Paso 3 — Resto de la configuración, también como Secrets.** El workflow busca cada valor primero en *Secrets*, luego en *Variables* y, si no está, usa el valor por defecto:
 
-| Variable | Valor | ¿Obligatoria? |
+| Secret | Valor | ¿Obligatorio? |
 | --- | --- | --- |
 | `TF_STATE_BUCKET` | `abp-data-lake-andresiles` | **Sí** (activa plan/apply) |
 | `AWS_REGION` | `us-east-2` | No (por defecto `us-east-2`) |
@@ -133,7 +134,7 @@ Remove-Item backend_override.tf    # el PC vuelve a usar su estado local
 
 | Síntoma | Causa / solución |
 | --- | --- |
-| Solo aparecen 2 jobs | Falta la variable `TF_STATE_BUCKET` (comportamiento esperado: solo CI). |
+| Plan y Desplegar salen *skipped* | Falta el secret `TF_STATE_BUCKET` (comportamiento esperado: solo CI); el job `¿Nube configurada?` lo avisa. |
 | `terraform fmt` falla | Ejecuta `terraform fmt -recursive` en `infra/terraform` y vuelve a subir. |
 | El plan quiere **crear** el proyecto/clúster | El estado no se migró a S3 (Paso 1) o `TF_STATE_KEY` apunta a otra ruta. |
 | `AccessDenied` en `init` | Faltan permisos IAM sobre el bucket/clave del estado (Paso 5) o región incorrecta. |
