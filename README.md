@@ -44,7 +44,10 @@ Corresponde al **PARCIAL BD PRIMER CORTE** del curso IPT (Arquitectura de Datos)
 │   └── docs/                   # Documentación del informe
 │       ├── infraestructura_como_codigo.md  # ⬅ IaC: cómo se despliega el entorno en código
 │       ├── data_lake_s3.md                 # ⬅ Data Lake en la nube (Amazon S3)
-│       └── data_warehouse_cloud.md         # ⬅ Fase 10: DW en la nube (BigQuery/Snowflake)
+│       ├── data_warehouse_cloud.md         # ⬅ Fase 10: DW en la nube (BigQuery/Snowflake)
+│       └── cicd_dataops.md                 # ⬅ CI/CD (DataOps) con GitHub Actions
+├── .github/workflows/deploy.yml  # CI/CD: pruebas + terraform plan/apply en cada push
+├── tests/                      # Pruebas automáticas (pytest, sin nube)
 ├── config.py                   # Constantes centralizadas (lee secretos desde el .env)
 ├── docker-compose.infra.yml    # IaC local: Replica Set MongoDB rs0 + MinIO
 ├── deploy_infra.ps1            # Orquestador IaC: 1 comando para TODO (local + nube)
@@ -55,6 +58,7 @@ Corresponde al **PARCIAL BD PRIMER CORTE** del curso IPT (Arquitectura de Datos)
 │   └── main.tf|variables.tf|outputs.tf|terraform.tfvars.example
 ├── requirements.txt
 ├── requirements-dw.txt           # Dependencias OPCIONALES del DW en la nube (Fase 10)
+├── requirements-dev.txt          # Dependencias de pruebas / CI (pytest)
 ├── .env.example                # Plantilla de secretos
 ├── .env.infra.example          # Plantilla de secretos del compose (IaC local)
 └── taller-conexion-mongo/      # Guías (contexto, NO se sube a Git)
@@ -488,6 +492,22 @@ Copy-Item .env.infra.example .env.infra
 .\deploy_infra.ps1 -Down -Volumes  # detener y BORRAR volúmenes (datos del RS/MinIO)
 ```
 
+## CI/CD (DataOps) con GitHub Actions
+
+Cada `git push` o pull request a `main` dispara [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml):
+
+1. **🧪 Pruebas Python:** compila todos los scripts y corre `pytest` sobre [`tests/`](tests/). Hay 27 pruebas: reglas de negocio de los modelos, abstracción local ↔ S3, decisiones del DW en BigQuery y una prueba de humo de punta a punta (Data Lake sintético → esquema estrella). Nunca tocan la nube.
+2. **🔎 Terraform fmt + validate:** valida `infra/terraform/` sin credenciales.
+3. **📋 Terraform plan** contra MongoDB Atlas, con el estado remoto en S3. Se resume en la pestaña *Summary*.
+4. **🚀 Desplegar (`terraform apply`):** solo en push a `main` y tras la aprobación manual del environment `produccion`.
+
+Los pasos 3 y 4 se activan al definir la variable del repositorio `TF_STATE_BUCKET`. Antes hay que migrar el estado local de Terraform a S3 y cargar los secrets de Atlas y AWS. Configuración paso a paso: [`Mongo/docs/cicd_dataops.md`](Mongo/docs/cicd_dataops.md).
+
+```powershell
+pip install -r requirements-dev.txt   # solo la primera vez
+python -m pytest                      # mismas pruebas que corre GitHub Actions
+```
+
 ## No se versiona (`.gitignore`)
 
 | Ítem | Motivo |
@@ -502,3 +522,4 @@ Copy-Item .env.infra.example .env.infra
 | `Mongo/dashboards/` | PNG generados por el dashboard |
 | `Mongo/catalogo_datos/` | Excel del catálogo de datos (generado) |
 | `Mongo/data_lake/.cache_s3/` | Caché temporal al leer desde S3 con Spark |
+| `.pytest_cache/`, `reporte-pruebas.xml`, `infra/terraform/backend_override.tf` | Artefactos de pruebas y backend remoto generado en CI |
