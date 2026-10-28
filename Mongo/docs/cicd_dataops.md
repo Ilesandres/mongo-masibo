@@ -79,7 +79,7 @@ No hace falta configurar nada: al subir `.github/workflows/deploy.yml` el pipeli
 
 ```powershell
 cd infra/terraform
-# Archivo temporal SOLO para migrar (está en .gitignore; bórralo al terminar)
+# backend_override.tf está en .gitignore: se queda en el PC para que use el MISMO estado que CI
 @'
 terraform {
   backend "s3" {
@@ -92,10 +92,30 @@ terraform {
 }
 '@ | Set-Content -Encoding utf8 backend_override.tf
 terraform init -migrate-state      # responde "yes": copia el estado local a S3
-Remove-Item backend_override.tf    # el PC vuelve a usar su estado local
 ```
 
-> ⚠️ Desde ese momento la **fuente de verdad** es el estado en S3. Si vuelves a usar `deploy_infra_nube.ps1` en el PC, el estado local puede quedar desactualizado; lo recomendable es desplegar solo desde el pipeline.
+En **Git Bash**, tomando las llaves de AWS directamente del `.env` (sin escribirlas a mano):
+
+```bash
+cd infra/terraform
+cat > backend_override.tf <<'EOF'
+terraform {
+  backend "s3" {
+    bucket       = "abp-data-lake-andresiles"
+    key          = "hyperflix/terraform/terraform.tfstate"
+    region       = "us-east-2"
+    encrypt      = true
+    use_lockfile = true
+  }
+}
+EOF
+leer_env() { grep -E "^$1=" ../../taller-conexion-mongo/.env | head -1 | cut -d= -f2- | tr -d '
+' '; }
+export AWS_ACCESS_KEY_ID="$(leer_env AWS_ACCESS_KEY_ID)" AWS_SECRET_ACCESS_KEY="$(leer_env AWS_SECRET_ACCESS_KEY)"
+terraform init -migrate-state      # responde "yes"
+```
+
+> ⚠️ Desde ese momento la **fuente de verdad** es el estado en S3, compartido por el PC y GitHub Actions. **No borres `backend_override.tf`** (no se versiona): sin él, `terraform init` en el PC pediría volver al estado local. El archivo `terraform.tfstate` local queda como respaldo histórico.
 
 **Paso 2 — Secrets** (*Settings → Secrets and variables → Actions → Secrets*):
 
@@ -135,6 +155,8 @@ Remove-Item backend_override.tf    # el PC vuelve a usar su estado local
 | Síntoma | Causa / solución |
 | --- | --- |
 | Plan y Desplegar salen *skipped* | Falta el secret `TF_STATE_BUCKET` (comportamiento esperado: solo CI); el job `¿Nube configurada?` lo avisa. |
+| `InvalidClientTokenId` en `terraform init` | Las llaves de AWS son de ejemplo o están mal copiadas (espacios, comillas, `
+`). Usa la función `leer_env` del Paso 1. |
 | `terraform fmt` falla | Ejecuta `terraform fmt -recursive` en `infra/terraform` y vuelve a subir. |
 | El plan quiere **crear** el proyecto/clúster | El estado no se migró a S3 (Paso 1) o `TF_STATE_KEY` apunta a otra ruta. |
 | `AccessDenied` en `init` | Faltan permisos IAM sobre el bucket/clave del estado (Paso 5) o región incorrecta. |
