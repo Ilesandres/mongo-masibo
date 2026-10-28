@@ -41,6 +41,9 @@ infra/terraform/*.tfstate
 infra/terraform/*.tfstate.*
 infra/terraform/crash.log
 infra/terraform/tfplan
+# Backend remoto (S3) que genera el pipeline de CI/CD o la migración del estado
+infra/terraform/backend_override.tf
+
 # ── Pruebas (pytest / CI) ────────────────────────────────
 .pytest_cache/
 reporte-pruebas.xml
