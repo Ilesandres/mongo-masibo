@@ -109,8 +109,7 @@ terraform {
   }
 }
 EOF
-leer_env() { grep -E "^$1=" ../../taller-conexion-mongo/.env | head -1 | cut -d= -f2- | tr -d '
-' '; }
+leer_env() { grep -E "^$1=" ../../taller-conexion-mongo/.env | head -1 | cut -d= -f2- | tr -d '\r" '; }
 export AWS_ACCESS_KEY_ID="$(leer_env AWS_ACCESS_KEY_ID)" AWS_SECRET_ACCESS_KEY="$(leer_env AWS_SECRET_ACCESS_KEY)"
 terraform init -migrate-state      # responde "yes"
 ```
@@ -155,8 +154,7 @@ terraform init -migrate-state      # responde "yes"
 | Síntoma | Causa / solución |
 | --- | --- |
 | Plan y Desplegar salen *skipped* | Falta el secret `TF_STATE_BUCKET` (comportamiento esperado: solo CI); el job `¿Nube configurada?` lo avisa. |
-| `InvalidClientTokenId` en `terraform init` | Las llaves de AWS son de ejemplo o están mal copiadas (espacios, comillas, `
-`). Usa la función `leer_env` del Paso 1. |
+| `InvalidClientTokenId` en `terraform init` | Las llaves de AWS son de ejemplo o están mal copiadas (espacios, comillas, `\r`). Usa la función `leer_env` del Paso 1. |
 | `terraform fmt` falla | Ejecuta `terraform fmt -recursive` en `infra/terraform` y vuelve a subir. |
 | El plan quiere **crear** el proyecto/clúster | El estado no se migró a S3 (Paso 1) o `TF_STATE_KEY` apunta a otra ruta. |
 | `AccessDenied` en `init` | Faltan permisos IAM sobre el bucket/clave del estado (Paso 5) o región incorrecta. |
