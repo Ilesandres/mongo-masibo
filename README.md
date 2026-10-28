@@ -496,17 +496,46 @@ Copy-Item .env.infra.example .env.infra
 
 Cada `git push` o pull request a `main` dispara [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml):
 
-1. **🧪 Pruebas Python:** compila todos los scripts y corre `pytest` sobre [`tests/`](tests/). Hay 27 pruebas: reglas de negocio de los modelos, abstracción local ↔ S3, decisiones del DW en BigQuery y una prueba de humo de punta a punta (Data Lake sintético → esquema estrella). Nunca tocan la nube.
-2. **🔎 Terraform fmt + validate:** valida `infra/terraform/` sin credenciales.
-3. **📋 Terraform plan** contra MongoDB Atlas, con el estado remoto en S3. Se resume en la pestaña *Summary*.
-4. **🚀 Desplegar (`terraform apply`):** solo en push a `main` y tras la aprobación manual del environment `produccion`.
+| Job | Cuándo | Qué hace |
+| --- | --- | --- |
+| 🧪 **Pruebas Python** | push y PR | Compila todos los scripts y corre `pytest` sobre [`tests/`](tests/): 27 pruebas (reglas de negocio de los modelos, abstracción local ↔ S3, decisiones del DW en BigQuery y una prueba de humo de punta a punta: Data Lake sintético → esquema estrella). Nunca tocan la nube. |
+| 🔎 **Terraform fmt + validate** | push y PR | Valida `infra/terraform/` sin credenciales. |
+| ☁️ **¿Nube configurada?** | push y PR | Revisa si existe el secret `TF_STATE_BUCKET` y habilita (o salta) los dos jobs siguientes. |
+| 📋 **Terraform plan** | push y PR | `terraform plan` contra MongoDB Atlas con el **estado remoto en S3**; se resume en la pestaña *Summary*. |
+| 🚀 **Desplegar infraestructura** | solo push a `main` | `terraform apply` tras la **aprobación manual** del environment `produccion`. |
 
-Los pasos 3 y 4 se activan al crear el secret del repositorio `TF_STATE_BUCKET` (toda la configuración se lee de *Secrets*). Antes hay que migrar el estado local de Terraform a S3 y cargar los secrets de Atlas y AWS. Configuración paso a paso: [`Mongo/docs/cicd_dataops.md`](Mongo/docs/cicd_dataops.md).
+**Configuración (ya hecha en este repositorio):**
+
+- **Estado de Terraform en S3:** `s3://abp-data-lake-andresiles/hyperflix/terraform/terraform.tfstate`, con bloqueo (`use_lockfile`). En el PC, `infra/terraform/backend_override.tf` (no versionado) apunta al mismo estado, así que **no se borra**.
+- **GitHub → Settings → Secrets and variables → Actions → *Secrets*** (toda la configuración va como secret):
+
+  | Secret | Valor |
+  | --- | --- |
+  | `TF_STATE_BUCKET` | Bucket del estado (activa plan/deploy) |
+  | `ATLAS_ORG_ID` · `ATLAS_PUBLIC_KEY` · `ATLAS_PRIVATE_KEY` · `ATLAS_DB_PASSWORD` | `org_id`, llaves de la API y `db_password` de `infra/terraform/terraform.tfvars` (sin comillas ni espacios) |
+  | `AWS_ACCESS_KEY_ID` · `AWS_SECRET_ACCESS_KEY` · `AWS_REGION` | Credenciales IAM con acceso al bucket del estado |
+  | `TF_PROJECT_NAME` · `TF_CLUSTER_NAME` · `TF_CLUSTER_TIER` · `TF_PROVIDER_REGION` · `TF_STATE_KEY` | Opcionales (por defecto `Hyperflix-IaC`, `Cluster-IaC`, `M0`, `US_EAST_1`, `hyperflix/terraform/terraform.tfstate`) |
+
+- **GitHub → Settings → Environments → `produccion`** con *Required reviewers*: el deploy espera el botón **Review deployments**.
+
+**Comandos útiles:**
 
 ```powershell
 pip install -r requirements-dev.txt   # solo la primera vez
 python -m pytest                      # mismas pruebas que corre GitHub Actions
 ```
+
+```bash
+# Git Bash, desde infra/terraform: comprobar que el estado de S3 coincide con Atlas
+leer_env() { grep -E "^$1=" ../../taller-conexion-mongo/.env | head -1 | cut -d= -f2- | tr -d '\r" '; }
+export AWS_ACCESS_KEY_ID="$(leer_env AWS_ACCESS_KEY_ID)" AWS_SECRET_ACCESS_KEY="$(leer_env AWS_SECRET_ACCESS_KEY)"
+terraform plan        # esperado: "No changes"
+
+# Si el plan quiere CREAR algo que ya existe en Atlas, importarlo (no toca Atlas):
+terraform import mongodbatlas_cluster.hyperflix <project_id>-Cluster-IaC
+```
+
+> ⚠️ **Antes de aprobar un deploy**, revisa la línea `Plan: X to add, Y to change, Z to destroy`. Si aparece `destroy` o `forces replacement` y no lo esperabas, **recházalo**. Migración del estado, importación de recursos, política IAM y troubleshooting (`SignatureDoesNotMatch`, `org_id … forces replacement`, `CANNOT_CREATE_FREE_CLUSTER_VIA_PUBLIC_API`…): [`Mongo/docs/cicd_dataops.md`](Mongo/docs/cicd_dataops.md).
 
 ## No se versiona (`.gitignore`)
 
