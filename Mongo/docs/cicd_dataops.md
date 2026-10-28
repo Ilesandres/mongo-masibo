@@ -142,12 +142,53 @@ terraform init -migrate-state      # responde "yes"
 
 **Paso 5 — Política IAM:** además de los permisos del Data Lake (ver [`data_lake_s3.md`](data_lake_s3.md)), el usuario necesita `s3:GetObject`, `s3:PutObject`, `s3:DeleteObject` sobre `hyperflix/terraform/*` (el `DeleteObject` es para el archivo de bloqueo `.tflock`) y `s3:ListBucket` sobre el bucket.
 
+**Paso 6 — Verificar en el PC que el estado coincide con Atlas (antes del primer deploy).** Con `backend_override.tf` en su sitio, el PC usa el mismo estado de S3 que GitHub:
+
+```bash
+cd infra/terraform
+leer_env() { grep -E "^$1=" ../../taller-conexion-mongo/.env | head -1 | cut -d= -f2- | tr -d '\r" '; }
+export AWS_ACCESS_KEY_ID="$(leer_env AWS_ACCESS_KEY_ID)" AWS_SECRET_ACCESS_KEY="$(leer_env AWS_SECRET_ACCESS_KEY)"
+terraform state list   # recursos que Terraform conoce
+terraform plan         # debe decir: "No changes. Your infrastructure matches the configuration."
+```
+
+Si el `plan` quiere **crear** algo que ya existe en Atlas (p. ej. el clúster), ese recurso no está en el estado: **impórtalo** en lugar de desplegar (solo escribe en el estado, no toca Atlas):
+
+```bash
+# ID del clúster: <project_id>-<nombre del clúster>
+terraform import mongodbatlas_cluster.hyperflix <project_id>-Cluster-IaC
+# ID del proyecto: <project_id>
+terraform import mongodbatlas_project.hyperflix <project_id>
+terraform plan         # repetir hasta ver "No changes"
+```
+
+> En este proyecto el clúster `Cluster-IaC` nunca había quedado en el estado (solo el proyecto y el usuario), por lo que el primer deploy intentó crear un segundo M0. Se resolvió con `terraform import mongodbatlas_cluster.hyperflix 6abc60c62b90567f4afefb53-Cluster-IaC`.
+
 ## 5. Flujo de trabajo resultante
 
 1. Creas una rama y haces un cambio (p. ej. `cluster_tier = "M10"` o un ajuste del ETL).
 2. Abres un **pull request** → corren las pruebas, la validación y el `plan`; el resumen muestra qué cambiaría en Atlas.
 3. Haces **merge a `main`** → se repite la validación y el job `desplegar` queda **esperando aprobación**.
 4. Apruebas → `terraform apply` → la infraestructura en la nube queda igual al código.
+
+### 5.1 Antes de aprobar: lee el plan
+En el run, abre el job **📋 Terraform plan** (o el *Summary*) y busca la línea:
+
+```
+Plan: X to add, Y to change, Z to destroy.
+```
+
+| Qué ves | Qué hacer |
+| --- | --- |
+| `No changes` / `0 to add, 0 to change, 0 to destroy` | Aprobar sin riesgo. |
+| Solo `to add` / `to change` que esperabas (p. ej. subir el tier) | Aprobar. |
+| Cualquier `to destroy`, `must be replaced` o `forces replacement` que **no** esperabas | **Rechazar** (*Review deployments → Reject*) y revisar los secrets/estado. |
+
+> Lección aprendida: un `ATLAS_ORG_ID` mal copiado produjo `org_id … -> "***" # forces replacement`, y aprobar ese plan **borró el usuario `hyperflix_app`** (Atlas impidió borrar el proyecto porque tenía un clúster activo). El usuario se recreó en el siguiente deploy.
+
+### 5.2 Volver a correr el pipeline
+- **Re-run jobs → Re-run failed jobs** (sin nuevo push) tras corregir un secret.
+- **Actions → CI/CD DataOps → Run workflow** (`workflow_dispatch`) para lanzarlo a mano. Nota: el job *Desplegar* solo corre en **push** a `main`.
 
 ## 6. Troubleshooting
 
@@ -159,3 +200,9 @@ terraform init -migrate-state      # responde "yes"
 | El plan quiere **crear** el proyecto/clúster | El estado no se migró a S3 (Paso 1) o `TF_STATE_KEY` apunta a otra ruta. |
 | `AccessDenied` en `init` | Faltan permisos IAM sobre el bucket/clave del estado (Paso 5) o región incorrecta. |
 | `401` / `403` de Atlas | API key sin rol a nivel organización o la IP de GitHub no está en la *API Access List* de la key (desactívala o usa una key sin restricción de IP). |
+| `SignatureDoesNotMatch` en `terraform init` (CI) | El `AWS_ACCESS_KEY_ID` es válido pero el secret `AWS_SECRET_ACCESS_KEY` no coincide: espacio/salto de línea/comillas al pegar, o se rotó solo una de las dos llaves. Vuelve a pegarlo y *Re-run failed jobs*. |
+| `org_id = "64f7…" -> "***" # forces replacement` | El secret `ATLAS_ORG_ID` **no es idéntico** al `org_id` real (si lo fuera, GitHub también ocultaría el valor de la izquierda). Suele ser por comillas o espacios. **No apruebes**: corrige el secret. |
+| `CANNOT_CREATE_FREE_CLUSTER_VIA_PUBLIC_API` | El plan intenta crear un M0 que ya existe (solo se permite 1 gratis por proyecto): el clúster no está en el estado. Impórtalo (Paso 6). |
+| `CANNOT_CLOSE_GROUP_ACTIVE_ATLAS_CLUSTERS` | El plan intentó **destruir el proyecto**; Atlas lo bloquea mientras haya clústeres. Revisa por qué el plan pedía reemplazo (casi siempre `ATLAS_ORG_ID`). |
+| *Desplegar* se queda en *Waiting* | Espera la aprobación del environment `produccion`: botón **Review deployments**. |
+| Warning sobre `password` en `mongodbatlas_database_user` | Informativo: si cambias la contraseña en la consola de Atlas, el siguiente `apply` la devuelve al valor de `ATLAS_DB_PASSWORD`. |
